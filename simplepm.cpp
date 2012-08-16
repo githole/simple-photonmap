@@ -12,10 +12,10 @@ const double INF = 1e20;
 const double EPS = 1e-6;
 const double MaxDepth = 5;
 
-// *** ‚»‚М‘ј‚МЉЦђ” ***
+// *** гЃќгЃ®д»–гЃ®й–ўж•° ***
 inline double rand01() { return (double)rand()/RAND_MAX; }
 
-// *** ѓfЃ[ѓ^Ќ\‘ў ***
+// *** гѓ‡гѓјг‚їж§‹йЂ  ***
 struct Vec {
 	double x, y, z;
 	Vec(const double x_ = 0, const double y_ = 0, const double z_ = 0) : x(x_), y(y_), z(z_) {}
@@ -28,7 +28,7 @@ struct Vec {
 };
 inline Vec operator*(double f, const Vec &v) { return v * f; }
 inline Vec Normalize(const Vec &v) { return v / v.Length(); }
-// —v‘f‚І‚Ж‚МђП‚р‚Ж‚й
+// и¦Ѓзґ гЃ”гЃЁгЃ®з©Ќг‚’гЃЁг‚‹
 inline const Vec Multiply(const Vec &v1, const Vec &v2) {
 	return Vec(v1.x * v2.x, v1.y * v2.y, v1.z * v2.z);
 }
@@ -47,9 +47,9 @@ struct Ray {
 };
 
 enum ReflectionType {
-	DIFFUSE,    // Љ®‘SЉgЋU–КЃB‚ў‚н‚д‚йLambertian–КЃB
-	SPECULAR,   // —ќ‘z“I‚И‹ѕ–КЃB
-	REFRACTION, // —ќ‘z“I‚ИѓKѓ‰ѓX“I•ЁЋїЃB
+	DIFFUSE,    // е®Ње…Ёж‹Ўж•ЈйќўгЂ‚гЃ„г‚Џг‚†г‚‹LambertianйќўгЂ‚
+	SPECULAR,   // зђ†жѓізљ„гЃЄйЏЎйќўгЂ‚
+	REFRACTION, // зђ†жѓізљ„гЃЄг‚¬гѓ©г‚№зљ„з‰©иіЄгЂ‚
 };
 
 struct Sphere {
@@ -60,7 +60,7 @@ struct Sphere {
 
 	Sphere(const double radius_, const Vec &position_, const Color &emission_, const Color &color_, const ReflectionType ref_type_) :
 	  radius(radius_), position(position_), emission(emission_), color(color_), ref_type(ref_type_) {}
-	// “ь—Н‚Мray‚Й‘О‚·‚йЊрЌ·“_‚Ь‚Е‚М‹——Ј‚р•Ф‚·ЃBЊрЌ·‚µ‚И‚©‚Б‚Ѕ‚з0‚р•Ф‚·ЃB
+	// е…ҐеЉ›гЃ®rayгЃ«еЇѕгЃ™г‚‹дє¤е·®з‚№гЃѕгЃ§гЃ®и·ќй›ўг‚’иї”гЃ™гЂ‚дє¤е·®гЃ—гЃЄгЃ‹гЃЈгЃџг‚‰0г‚’иї”гЃ™гЂ‚
 	const double intersect(const Ray &ray) {
 		Vec o_p = position - ray.org;
 		const double b = Dot(o_p, ray.dir), det = b * b - Dot(o_p, o_p) + radius * radius;
@@ -74,7 +74,7 @@ struct Sphere {
 	}
 };
 
-// €И‰єѓtѓHѓgѓ“ѓ}ѓbѓv—pѓfЃ[ѓ^Ќ\‘ў
+// д»Ґдё‹гѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—з”Ёгѓ‡гѓјг‚їж§‹йЂ 
 struct Photon {
 	Vec position;
 	Color power;
@@ -84,7 +84,7 @@ struct Photon {
 	position(position_), power(power_), incident(incident_) {}
 };
 
-// PhotonQueue‚ЙЏж‚№‚й‚Ѕ‚Я‚МѓfЃ[ѓ^Ќ\‘ўЃBstruct Photon‚Ж‚Н•К‚Й—p€У‚·‚йЃB
+// PhotonQueueгЃ«д№—гЃ›г‚‹гЃџг‚ЃгЃ®гѓ‡гѓјг‚їж§‹йЂ гЂ‚struct PhotonгЃЁгЃЇе€ҐгЃ«з”Ёж„ЏгЃ™г‚‹гЂ‚
 struct PhotonForQueue {
 	const Photon *photon;
 	double distance2;
@@ -93,18 +93,18 @@ struct PhotonForQueue {
 		return distance2 < b.distance2;
 	}
 };
-// k-NN search‚ЕЋg‚¤ѓLѓ…Ѓ[
+// k-NN searchгЃ§дЅїгЃ†г‚­гѓҐгѓј
 typedef std::priority_queue<PhotonForQueue, std::vector<PhotonForQueue>> PhotonQueue;
 
-// ѓtѓHѓgѓ“‚рЉi”[‚·‚й‚Ѕ‚Я‚МKD-tree
+// гѓ•г‚©гѓ€гѓіг‚’ж јзґЌгЃ™г‚‹гЃџг‚ЃгЃ®KD-tree
 class PhotonMap {
 public:
-	// k-NN search‚МѓNѓGѓЉ
+	// k-NN searchгЃ®г‚Їг‚ЁгѓЄ
 	struct Query {
-		double max_distance2; // ’TЌх‚МЌЕ‘е”јЊa
-		size_t max_photon_num; // ЌЕ‘еѓtѓHѓgѓ“ђ”
-		Vec search_position; // ’TЌх’†ђS
-		Vec normal; // ’TЌх’†ђS‚Й‚Ё‚Ї‚й–@ђь
+		double max_distance2; // жЋўзґўгЃ®жњЂе¤§еЌЉеѕ„
+		size_t max_photon_num; // жњЂе¤§гѓ•г‚©гѓ€гѓіж•°
+		Vec search_position; // жЋўзґўдё­еїѓ
+		Vec normal; // жЋўзґўдё­еїѓгЃ«гЃЉгЃ‘г‚‹жі•з·љ
 		Query(const Vec &search_position_, const Vec &normal_, const double max_distance2_, const size_t max_photon_num_) :
 		max_distance2(max_distance2_), normal(normal_), max_photon_num(max_photon_num_), search_position(search_position_) {}
 	};
@@ -125,7 +125,7 @@ private:
 		delete node;
 	}
 
-	// ѓtѓcЃ[‚Мk-NN searchЃB
+	// гѓ•гѓ„гѓјгЃ®k-NN searchгЂ‚
 	void locate_photons(PhotonQueue* pqueue, KDTreeNode* node, PhotonMap::Query &query) {
 		if (node == NULL)
 			return;
@@ -138,7 +138,7 @@ private:
 		case 2: delta = query.search_position.z - node->photon->position.z; break;
 		}
 
-		// ѓtѓHѓgѓ“<->’TЌх’†ђS‚М‹——Ј‚ЄђЭ’и”јЊa€И‰єЃ@‚©‚ВЃ@ѓtѓHѓgѓ“<->’TЌх’†ђS‚М–@ђь•ыЊь‚М‹——Ј‚Є€к’и€И‰єЃ@‚Ж‚ў‚¤ЏрЊЏ‚И‚з‚»‚МѓtѓHѓgѓ“‚рЉi”[
+		// гѓ•г‚©гѓ€гѓі<->жЋўзґўдё­еїѓгЃ®и·ќй›ўгЃЊиЁ­е®љеЌЉеѕ„д»Ґдё‹гЂЂгЃ‹гЃ¤гЂЂгѓ•г‚©гѓ€гѓі<->жЋўзґўдё­еїѓгЃ®жі•з·љж–№еђ‘гЃ®и·ќй›ўгЃЊдёЂе®љд»Ґдё‹гЂЂгЃЁгЃ„гЃ†жќЎд»¶гЃЄг‚‰гЃќгЃ®гѓ•г‚©гѓ€гѓіг‚’ж јзґЌ
 		const Vec dir = node->photon->position - query.search_position;
 		const double distance2 = dir.LengthSquared();
 		const double dt = Dot(query.normal, dir / sqrt(distance2));
@@ -149,12 +149,12 @@ private:
 				query.max_distance2 = pqueue->top().distance2;
 			}
 		}
-		if (delta > 0.0) { // ‚Э‚¬
+		if (delta > 0.0) { // гЃїгЃЋ
 			locate_photons(pqueue,node->right, query);
 			if (delta * delta < query.max_distance2) {
 				locate_photons(pqueue, node->left, query);
 			}
-		} else { // ‚Р‚ѕ‚и
+		} else { // гЃІгЃ г‚Љ
 			locate_photons(pqueue,node->left, query);
 			if (delta * delta < query.max_distance2) {
 				locate_photons(pqueue, node->right, query);
@@ -178,7 +178,7 @@ private:
 			return NULL;
 		}
 		const int axis = depth % 3;
-		// ’†‰›’l
+		// дё­е¤®еЂ¤
 		switch (axis) {
 		case 0: std::sort(begin, end, kdtree_less_operator_x); break;
 		case 1: std::sort(begin, end, kdtree_less_operator_y); break;
@@ -188,7 +188,7 @@ private:
 		KDTreeNode* node = new KDTreeNode;
 		node->axis = axis;
 		node->photon = &(*(begin + median));
-		// Ћq‹џ
+		// е­ђдѕ›
 		node->left  = create_kdtree_sub(begin,              begin + median, depth + 1);
 		node->right = create_kdtree_sub(begin + median + 1, end,            depth + 1);
 		return node;
@@ -214,23 +214,23 @@ public:
 	}
 };
 
-// *** ѓЊѓ“ѓ_ѓЉѓ“ѓO‚·‚йѓVЃ[ѓ“ѓfЃ[ѓ^ ****
+// *** гѓ¬гѓігѓЂгѓЄгѓіг‚°гЃ™г‚‹г‚·гѓјгѓігѓ‡гѓјг‚ї ****
 // from smallpt
 Sphere spheres[] = {
-	Sphere(5.0, Vec(50.0, 75.0, 81.6),Color(12,12,12), Color(), DIFFUSE),//ЏЖ–ѕ
-	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Color(), Color(0.75, 0.25, 0.25),DIFFUSE),// Ќ¶
-	Sphere(1e5, Vec(-1e5+99,40.8,81.6),Color(), Color(0.25, 0.25, 0.75),DIFFUSE),// ‰E
-	Sphere(1e5, Vec(50,40.8, 1e5),     Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// ‰њ
-	Sphere(1e5, Vec(50,40.8,-1e5+170), Color(), Color(), DIFFUSE),// Ћи‘O
-	Sphere(1e5, Vec(50, 1e5, 81.6),    Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// Џ°
-	Sphere(1e5, Vec(50,-1e5+81.6,81.6),Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// “V€д
-	Sphere(16.5,Vec(27,16.5,47),       Color(), Color(1,1,1)*.99, SPECULAR),// ‹ѕ
-	Sphere(16.5,Vec(73,16.5,78),       Color(), Color(1,1,1)*.99, REFRACTION),//ѓKѓ‰ѓX
+	Sphere(5.0, Vec(50.0, 75.0, 81.6),Color(12,12,12), Color(), DIFFUSE),//з…§жЋ
+	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Color(), Color(0.75, 0.25, 0.25),DIFFUSE),// е·¦
+	Sphere(1e5, Vec(-1e5+99,40.8,81.6),Color(), Color(0.25, 0.25, 0.75),DIFFUSE),// еЏі
+	Sphere(1e5, Vec(50,40.8, 1e5),     Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// еҐҐ
+	Sphere(1e5, Vec(50,40.8,-1e5+170), Color(), Color(), DIFFUSE),// ж‰‹е‰Ќ
+	Sphere(1e5, Vec(50, 1e5, 81.6),    Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// еєЉ
+	Sphere(1e5, Vec(50,-1e5+81.6,81.6),Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// е¤©дє•
+	Sphere(16.5,Vec(27,16.5,47),       Color(), Color(1,1,1)*.99, SPECULAR),// йЏЎ
+	Sphere(16.5,Vec(73,16.5,78),       Color(), Color(1,1,1)*.99, REFRACTION),//г‚¬гѓ©г‚№
 };
 const int LightID = 0;
 
-// *** ѓЊѓ“ѓ_ѓЉѓ“ѓO—pЉЦђ” ***
-// ѓVЃ[ѓ“‚Ж‚МЊрЌ·”»’иЉЦђ”
+// *** гѓ¬гѓігѓЂгѓЄгѓіг‚°з”Ёй–ўж•° ***
+// г‚·гѓјгѓігЃЁгЃ®дє¤е·®е€¤е®љй–ўж•°
 inline bool intersect_scene(const Ray &ray, double *t, int *id) {
 	const double n = sizeof(spheres) / sizeof(Sphere);
 	*t  = INF;
@@ -245,18 +245,18 @@ inline bool intersect_scene(const Ray &ray, double *t, int *id) {
 	return *t < INF;
 }
 
-// ѓtѓHѓgѓ“’ЗђХ–@‚Й‚ж‚иѓtѓHѓgѓ“ѓ}ѓbѓvЌ\’z
+// гѓ•г‚©гѓ€гѓіиїЅи·Ўжі•гЃ«г‚€г‚Љгѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—ж§‹зЇ‰
 void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 	std::cout << "Shooting photons... (" << shoot_photon_num << " photons)" << std::endl;
 	for (int i = 0; i < shoot_photon_num; i ++) {
-		// ЊхЊ№‚©‚зѓtѓHѓgѓ“‚р”­ЋЛ‚·‚й
-		// ЊхЊ№Џг‚М€к“_‚рѓTѓ“ѓvѓЉѓ“ѓO‚·‚й	
+		// е…‰жєђгЃ‹г‚‰гѓ•г‚©гѓ€гѓіг‚’з™єе°„гЃ™г‚‹
+		// е…‰жєђдёЉгЃ®дёЂз‚№г‚’г‚µгѓігѓ—гѓЄгѓіг‚°гЃ™г‚‹	
 		const double r1 = 2 * PI * rand01();
 		const double r2 = 1.0 - 2.0 * rand01() ;
 		const Vec light_pos = spheres[LightID].position + ((spheres[LightID].radius + EPS) * Vec(sqrt(1.0 - r2*r2) * cos(r1), sqrt(1.0 - r2*r2) * sin(r1), r2));
 
 		const Vec normal = Normalize(light_pos - spheres[LightID].position);
-		// ЊхЊ№Џг‚М“_‚©‚з”ј‹…ѓTѓ“ѓvѓЉѓ“ѓO‚·‚й
+		// е…‰жєђдёЉгЃ®з‚№гЃ‹г‚‰еЌЉзђѓг‚µгѓігѓ—гѓЄгѓіг‚°гЃ™г‚‹
 		Vec w, u, v;
 		w = normal;
 		if (fabs(w.x) > 0.1)
@@ -264,45 +264,45 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 		else
 			u = Normalize(Cross(Vec(1.0, 0.0, 0.0), w));
 		v = Cross(w, u);
-		// ѓRѓTѓCѓ“ЌЂ‚Й”д—б‚і‚№‚йЃBѓtѓHѓgѓ“‚Є‰^‚Ф‚М‚Є•ъЋЛ‹P“x‚Е‚Н‚И‚­•ъЋЛ‘©‚Е‚ ‚й‚Ѕ‚ЯЃB
+		// г‚іг‚µг‚¤гѓій …гЃ«жЇ”дѕ‹гЃ•гЃ›г‚‹гЂ‚гѓ•г‚©гѓ€гѓігЃЊйЃ‹гЃ¶гЃ®гЃЊж”ѕе°„ијќеє¦гЃ§гЃЇгЃЄгЃЏж”ѕе°„жќџгЃ§гЃ‚г‚‹гЃџг‚ЃгЂ‚
 		const double u1 = 2 * PI * rand01();
 		const double u2 = rand01(), u2s = sqrt(u2);
 		Vec light_dir = Normalize((u * cos(u1) * u2s + v * sin(u1) * u2s + w * sqrt(1.0 - u2)));
 
 		Ray now_ray(light_pos, light_dir);
-		// emission‚М’l‚Н•ъЋЛ‹P“x‚ѕ‚ЄЃAѓtѓHѓgѓ“‚Є‰^‚Ф‚М‚Н•ъЋЛ‘©‚И‚М‚Е•ПЉ·‚·‚й•K—v‚Є‚ ‚йЃB
-		// LЃi•ъЋЛ‹P“xЃj= dѓі/(cosѓЖdѓЦdA)‚И‚М‚ЕЃAЊхЊ№‚М•ъЋЛ‘©‚Нѓі = ЃзЃзLЃEcosѓЖdѓЦdA‚Й‚И‚йЃBЌЎ‰с‚Н‹…ЊхЊ№‚ЕЉ®‘SЉgЋUЊхЊ№‚Е‚ ‚й‚±‚Ж‚©‚з
-		// ‹…Џг‚М”C€У‚МЏкЏЉЃA”C€У‚М•ыЊь‚Й“™‚µ‚ў•ъЋЛ‹P“xLe‚рЋќ‚ВЃBЃi‚±‚к‚Єemission‚М’lЃj‚ж‚Б‚ДЃA
-		// ѓі = LeЃEЃзЃзcosѓЖdѓЦdA‚ЕЃALeЃEЃзdAЃзcosѓЖdѓЦ‚Ж‚И‚иЃAЃзdA‚Н‹…‚М–КђП‚И‚М‚Е4ѓОr^2ЃAЃзcosѓЖdѓЦ‚Н—§‘МЉp‚МђП•Є‚И‚М‚ЕѓО‚Ж‚И‚йЃB
-		// ‚ж‚Б‚ДЃAѓі = LeЃE4ѓОr^2ЃEѓО‚Ж‚И‚йЃB‚±‚М’l‚рЊхЊ№‚©‚з”­ЋЛ‚·‚йѓtѓHѓgѓ“ђ”‚ЕЉ„‚Б‚Д‚в‚к‚О€к‚В‚МѓtѓHѓgѓ“‚Є‰^‚Ф•ъЋЛ‘©‚Є‹Ѓ‚Ь‚йЃB
+		// emissionгЃ®еЂ¤гЃЇж”ѕе°„ијќеє¦гЃ гЃЊгЂЃгѓ•г‚©гѓ€гѓігЃЊйЃ‹гЃ¶гЃ®гЃЇж”ѕе°„жќџгЃЄгЃ®гЃ§е¤‰жЏ›гЃ™г‚‹еї…и¦ЃгЃЊгЃ‚г‚‹гЂ‚
+		// Lпј€ж”ѕе°„ијќеє¦пј‰= dО¦/(cosОёdП‰dA)гЃЄгЃ®гЃ§гЂЃе…‰жєђгЃ®ж”ѕе°„жќџгЃЇО¦ = в€«в€«Lгѓ»cosОёdП‰dAгЃ«гЃЄг‚‹гЂ‚д»Ље›ћгЃЇзђѓе…‰жєђгЃ§е®Ње…Ёж‹Ўж•Је…‰жєђгЃ§гЃ‚г‚‹гЃ“гЃЁгЃ‹г‚‰
+		// зђѓдёЉгЃ®д»»ж„ЏгЃ®е ґж‰ЂгЂЃд»»ж„ЏгЃ®ж–№еђ‘гЃ«з­‰гЃ—гЃ„ж”ѕе°„ијќеє¦Leг‚’жЊЃгЃ¤гЂ‚пј€гЃ“г‚ЊгЃЊemissionгЃ®еЂ¤пј‰г‚€гЃЈгЃ¦гЂЃ
+		// О¦ = Leгѓ»в€«в€«cosОёdП‰dAгЃ§гЂЃLeгѓ»в€«dAв€«cosОёdП‰гЃЁгЃЄг‚ЉгЂЃв€«dAгЃЇзђѓгЃ®йќўз©ЌгЃЄгЃ®гЃ§4ПЂr^2гЂЃв€«cosОёdП‰гЃЇз«‹дЅ“и§’гЃ®з©Ќе€†гЃЄгЃ®гЃ§ПЂгЃЁгЃЄг‚‹гЂ‚
+		// г‚€гЃЈгЃ¦гЂЃО¦ = Leгѓ»4ПЂr^2гѓ»ПЂгЃЁгЃЄг‚‹гЂ‚гЃ“гЃ®еЂ¤г‚’е…‰жєђгЃ‹г‚‰з™єе°„гЃ™г‚‹гѓ•г‚©гѓ€гѓіж•°гЃ§е‰ІгЃЈгЃ¦г‚„г‚ЊгЃ°дёЂгЃ¤гЃ®гѓ•г‚©гѓ€гѓігЃЊйЃ‹гЃ¶ж”ѕе°„жќџгЃЊж±‚гЃѕг‚‹гЂ‚
 		Color now_flux = spheres[LightID].emission * 4.0 * PI * pow(spheres[LightID].radius, 2.0) * PI / shoot_photon_num;
 
-		// ѓtѓHѓgѓ“‚ЄѓVЃ[ѓ“‚р”т‚Ф
+		// гѓ•г‚©гѓ€гѓігЃЊг‚·гѓјгѓіг‚’йЈ›гЃ¶
 		bool trace_end = false;
 		for (;!trace_end;) {
-			// •ъЋЛ‘©‚Є0.0‚ИѓtѓHѓgѓ“‚р’ЗђХ‚µ‚Д‚а‚µ‚е‚¤‚Є‚И‚ў‚М‚Е‘Е‚їђШ‚й
+			// ж”ѕе°„жќџгЃЊ0.0гЃЄгѓ•г‚©гѓ€гѓіг‚’иїЅи·ЎгЃ—гЃ¦г‚‚гЃ—г‚‡гЃ†гЃЊгЃЄгЃ„гЃ®гЃ§ж‰“гЃЎе€‡г‚‹
 			if (std::max(now_flux.x, std::max(now_flux.y, now_flux.z)) <= 0.0)
 				break;
 
-			double t; // ѓЊѓC‚©‚зѓVЃ[ѓ“‚МЊрЌ·€К’u‚Ь‚Е‚М‹——Ј
-			int id;   // ЊрЌ·‚µ‚ЅѓVЃ[ѓ““аѓIѓuѓWѓFѓNѓg‚МID
+			double t; // гѓ¬г‚¤гЃ‹г‚‰г‚·гѓјгѓігЃ®дє¤е·®дЅЌзЅ®гЃѕгЃ§гЃ®и·ќй›ў
+			int id;   // дє¤е·®гЃ—гЃџг‚·гѓјгѓіе†…г‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ®ID
 			if (!intersect_scene(now_ray, &t, &id))
 				break;
 			const Sphere &obj = spheres[id];
-			const Vec hitpoint = now_ray.org + t * now_ray.dir; // ЊрЌ·€К’u
-			const Vec normal  = Normalize(hitpoint - obj.position); // ЊрЌ·€К’u‚М–@ђь
-			const Vec orienting_normal = Dot(normal, now_ray.dir) < 0.0 ? normal : (-1.0 * normal); // ЊрЌ·€К’u‚М–@ђьЃi•Ё‘М‚©‚з‚МѓЊѓC‚М“ьЏo‚рЌl—¶Ѓj
+			const Vec hitpoint = now_ray.org + t * now_ray.dir; // дє¤е·®дЅЌзЅ®
+			const Vec normal  = Normalize(hitpoint - obj.position); // дє¤е·®дЅЌзЅ®гЃ®жі•з·љ
+			const Vec orienting_normal = Dot(normal, now_ray.dir) < 0.0 ? normal : (-1.0 * normal); // дє¤е·®дЅЌзЅ®гЃ®жі•з·љпј€з‰©дЅ“гЃ‹г‚‰гЃ®гѓ¬г‚¤гЃ®е…Ґе‡єг‚’иЂѓж…®пј‰
 
 			switch (obj.ref_type) {
 			case DIFFUSE: {
-				// ЉgЋU–К‚И‚М‚ЕѓtѓHѓgѓ“‚рѓtѓHѓgѓ“ѓ}ѓbѓv‚ЙЉi”[‚·‚й
+				// ж‹Ўж•ЈйќўгЃЄгЃ®гЃ§гѓ•г‚©гѓ€гѓіг‚’гѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—гЃ«ж јзґЌгЃ™г‚‹
 				photon_map->AddPhoton(Photon(hitpoint, now_flux, now_ray.dir));
 
-				// ”ЅЋЛ‚·‚й‚©‚З‚¤‚©‚рѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚ЕЊ€‚Я‚й
-				// —б‚Й‚ж‚Б‚ДЉm—¦‚Н”C€УЃBЌЎ‰с‚НѓtѓHѓgѓ“ѓ}ѓbѓv–{‚ЙЏ]‚Б‚ДRGB‚М”ЅЋЛ—¦‚М•Ѕ‹П‚рЋg‚¤
+				// еЏЌе°„гЃ™г‚‹гЃ‹гЃ©гЃ†гЃ‹г‚’гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€гЃ§ж±єг‚Ѓг‚‹
+				// дѕ‹гЃ«г‚€гЃЈгЃ¦зўєзЋ‡гЃЇд»»ж„ЏгЂ‚д»Ље›ћгЃЇгѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—жњ¬гЃ«еѕ“гЃЈгЃ¦RGBгЃ®еЏЌе°„зЋ‡гЃ®е№іеќ‡г‚’дЅїгЃ†
 				const double probability = (obj.color.x + obj.color.y + obj.color.z) / 3;
-				if (probability > rand01()) { // ”ЅЋЛ
-					// orienting_normal‚М•ыЊь‚рЉоЏЂ‚Ж‚µ‚Ѕђі‹K’јЊрЉо’к(w, u, v)‚рЌм‚йЃB‚±‚МЉо’к‚Й‘О‚·‚й”ј‹…“а‚ЕЋџ‚МѓЊѓC‚р”т‚О‚·ЃB
+				if (probability > rand01()) { // еЏЌе°„
+					// orienting_normalгЃ®ж–№еђ‘г‚’еџєжє–гЃЁгЃ—гЃџж­Ји¦Џз›ґдє¤еџєеє•(w, u, v)г‚’дЅњг‚‹гЂ‚гЃ“гЃ®еџєеє•гЃ«еЇѕгЃ™г‚‹еЌЉзђѓе†…гЃ§ж¬ЎгЃ®гѓ¬г‚¤г‚’йЈ›гЃ°гЃ™гЂ‚
 					Vec w, u, v;
 					w = orienting_normal;
 					if (fabs(w.x) > 0.1)
@@ -310,7 +310,7 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 					else
 						u = Normalize(Cross(Vec(1.0, 0.0, 0.0), w));
 					v = Cross(w, u);
-					// ѓRѓTѓCѓ“ЌЂ‚рЋg‚Б‚ЅЏd“_“IѓTѓ“ѓvѓЉѓ“ѓO
+					// г‚іг‚µг‚¤гѓій …г‚’дЅїгЃЈгЃџй‡Ќз‚№зљ„г‚µгѓігѓ—гѓЄгѓіг‚°
 					const double r1 = 2 * PI * rand01();
 					const double r2 = rand01(), r2s = sqrt(r2);
 					Vec dir = Normalize((u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2)));
@@ -318,46 +318,46 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 					now_ray = Ray(hitpoint, dir);
 					now_flux = Multiply(now_flux, obj.color) / probability;
 					continue;
-				} else { // ‹zЋыЃi‚·‚И‚н‚ї‚±‚±‚Е’ЗђХЏI—№Ѓj
+				} else { // еђёеЏЋпј€гЃ™гЃЄг‚ЏгЃЎгЃ“гЃ“гЃ§иїЅи·Ўзµ‚дє†пј‰
 					trace_end = true;
 					continue;
 				}
 			} break;
 			case SPECULAR: {
-				// Љ®‘S‹ѕ–К‚И‚М‚ЕѓtѓHѓgѓ“Љi”[‚µ‚И‚ў
-				// Љ®‘S‹ѕ–К‚И‚М‚ЕѓЊѓC‚М”ЅЋЛ•ыЊь‚НЊ€’и“IЃB
+				// е®Ње…ЁйЏЎйќўгЃЄгЃ®гЃ§гѓ•г‚©гѓ€гѓіж јзґЌгЃ—гЃЄгЃ„
+				// е®Ње…ЁйЏЎйќўгЃЄгЃ®гЃ§гѓ¬г‚¤гЃ®еЏЌе°„ж–№еђ‘гЃЇж±єе®љзљ„гЂ‚
 				now_ray = Ray(hitpoint, now_ray.dir - normal * 2.0 * Dot(normal, now_ray.dir));
 				now_flux = Multiply(now_flux, obj.color);
 				continue;
 			} break;
 			case REFRACTION: {
-				// ‚в‚Н‚иѓtѓHѓgѓ“Љi”[‚µ‚И‚ў
+				// г‚„гЃЇг‚Љгѓ•г‚©гѓ€гѓіж јзґЌгЃ—гЃЄгЃ„
 				Ray reflection_ray = Ray(hitpoint, now_ray.dir - normal * 2.0 * Dot(normal, now_ray.dir));
-				bool into = Dot(normal, orienting_normal) > 0.0; // ѓЊѓC‚ЄѓIѓuѓWѓFѓNѓg‚©‚зЏo‚й‚М‚©ЃA“ь‚й‚М‚©
+				bool into = Dot(normal, orienting_normal) > 0.0; // гѓ¬г‚¤гЃЊг‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ‹г‚‰е‡єг‚‹гЃ®гЃ‹гЂЃе…Ґг‚‹гЃ®гЃ‹
 
-				// Snell‚М–@‘Ґ
-				const double nc = 1.0; // ђ^‹у‚М‹ьђЬ—¦
-				const double nt = 1.5; // ѓIѓuѓWѓFѓNѓg‚М‹ьђЬ—¦
+				// SnellгЃ®жі•е‰‡
+				const double nc = 1.0; // зњџз©єгЃ®е±€жЉзЋ‡
+				const double nt = 1.5; // г‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ®е±€жЉзЋ‡
 				const double nnt = into ? nc / nt : nt / nc;
 				const double ddn = Dot(now_ray.dir, orienting_normal);
 				const double cos2t = 1.0 - nnt * nnt * (1.0 - ddn * ddn);
 
-				if (cos2t < 0.0) { // ‘S”ЅЋЛ‚µ‚Ѕ
+				if (cos2t < 0.0) { // е…ЁеЏЌе°„гЃ—гЃџ
 					now_ray = reflection_ray;
 					now_flux = Multiply(now_flux, obj.color);
 					continue;
 				}
-				// ‹ьђЬ‚µ‚Д‚ў‚­•ыЊь
+				// е±€жЉгЃ—гЃ¦гЃ„гЃЏж–№еђ‘
 				Vec tdir = Normalize(now_ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
 				const double probability  = 0.5;
 
-				// ‹ьђЬ‚Ж”ЅЋЛ‚М‚З‚ї‚з‚©€к•ы‚р’ЗђХ‚·‚йЃB
-				// ѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚ЕЊ€’и‚·‚йЃB
-				if (rand01() < probability) { // ”ЅЋЛ
+				// е±€жЉгЃЁеЏЌе°„гЃ®гЃ©гЃЎг‚‰гЃ‹дёЂж–№г‚’иїЅи·ЎгЃ™г‚‹гЂ‚
+				// гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€гЃ§ж±єе®љгЃ™г‚‹гЂ‚
+				if (rand01() < probability) { // еЏЌе°„
 					now_ray = Ray(hitpoint, tdir);
 					now_flux = Multiply(now_flux, obj.color);
 					continue;
-				} else { // ‹ьђЬ
+				} else { // е±€жЉ
 					now_ray = reflection_ray;
 					now_flux = Multiply(now_flux, obj.color);
 					continue;
@@ -372,38 +372,38 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 	std::cout << "Done." << std::endl;
 }
 
-// ray•ыЊь‚©‚з‚М•ъЋЛ‹P“x‚р‹Ѓ‚Я‚й
+// rayж–№еђ‘гЃ‹г‚‰гЃ®ж”ѕе°„ијќеє¦г‚’ж±‚г‚Ѓг‚‹
 Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const double gather_radius, const int gahter_max_photon_num) {
-	double t; // ѓЊѓC‚©‚зѓVЃ[ѓ“‚МЊрЌ·€К’u‚Ь‚Е‚М‹——Ј
-	int id;   // ЊрЌ·‚µ‚ЅѓVЃ[ѓ““аѓIѓuѓWѓFѓNѓg‚МID
+	double t; // гѓ¬г‚¤гЃ‹г‚‰г‚·гѓјгѓігЃ®дє¤е·®дЅЌзЅ®гЃѕгЃ§гЃ®и·ќй›ў
+	int id;   // дє¤е·®гЃ—гЃџг‚·гѓјгѓіе†…г‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ®ID
 	if (!intersect_scene(ray, &t, &id))
 		return BackgroundColor;
 
 	const Sphere &obj = spheres[id];
-	const Vec hitpoint = ray.org + t * ray.dir; // ЊрЌ·€К’u
-	const Vec normal  = Normalize(hitpoint - obj.position); // ЊрЌ·€К’u‚М–@ђь
-	const Vec orienting_normal = Dot(normal, ray.dir) < 0.0 ? normal : (-1.0 * normal); // ЊрЌ·€К’u‚М–@ђьЃi•Ё‘М‚©‚з‚МѓЊѓC‚М“ьЏo‚рЌl—¶Ѓj
+	const Vec hitpoint = ray.org + t * ray.dir; // дє¤е·®дЅЌзЅ®
+	const Vec normal  = Normalize(hitpoint - obj.position); // дє¤е·®дЅЌзЅ®гЃ®жі•з·љ
+	const Vec orienting_normal = Dot(normal, ray.dir) < 0.0 ? normal : (-1.0 * normal); // дє¤е·®дЅЌзЅ®гЃ®жі•з·љпј€з‰©дЅ“гЃ‹г‚‰гЃ®гѓ¬г‚¤гЃ®е…Ґе‡єг‚’иЂѓж…®пј‰
 
-	// ђF‚М”ЅЋЛ—¦ЌЕ‘е‚М‚а‚М‚р“ѕ‚йЃBѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚ЕЋg‚¤ЃB
-	// ѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚Ми‡’l‚Н”C€У‚ѕ‚ЄђF‚М”ЅЋЛ—¦“™‚рЋg‚¤‚Ж‚ж‚и—З‚ўЃB
+	// и‰ІгЃ®еЏЌе°„зЋ‡жњЂе¤§гЃ®г‚‚гЃ®г‚’еѕ—г‚‹гЂ‚гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€гЃ§дЅїгЃ†гЂ‚
+	// гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€гЃ®й–ѕеЂ¤гЃЇд»»ж„ЏгЃ гЃЊи‰ІгЃ®еЏЌе°„зЋ‡з­‰г‚’дЅїгЃ†гЃЁг‚€г‚Љи‰ЇгЃ„гЂ‚
 	double russian_roulette_probability = std::max(obj.color.x, std::max(obj.color.y, obj.color.z));
-	// €к’и€ИЏгѓЊѓC‚р’ЗђХ‚µ‚Ѕ‚зѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚рЋАЌs‚µ’ЗђХ‚р‘Е‚їђШ‚й‚©‚З‚¤‚©‚р”»’f‚·‚й
+	// дёЂе®љд»ҐдёЉгѓ¬г‚¤г‚’иїЅи·ЎгЃ—гЃџг‚‰гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€г‚’е®џиЎЊгЃ—иїЅи·Ўг‚’ж‰“гЃЎе€‡г‚‹гЃ‹гЃ©гЃ†гЃ‹г‚’е€¤ж–­гЃ™г‚‹
 	if (depth > MaxDepth) {
 		if (rand01() >= russian_roulette_probability)
 			return obj.emission;
 	} else
-		russian_roulette_probability = 1.0; // ѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓgЋАЌs‚µ‚И‚©‚Б‚Ѕ
+		russian_roulette_probability = 1.0; // гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€е®џиЎЊгЃ—гЃЄгЃ‹гЃЈгЃџ
 
 	switch (obj.ref_type) {
 	case DIFFUSE: {
-		// ѓtѓHѓgѓ“ѓ}ѓbѓv‚р‚В‚©‚Б‚Д•ъЋЛ‹P“xђ„’и‚·‚й
+		// гѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—г‚’гЃ¤гЃ‹гЃЈгЃ¦ж”ѕе°„ијќеє¦жЋЁе®љгЃ™г‚‹
 		PhotonQueue pqueue;
-		// k‹Я–T’TЌхЃBgather_radius”јЊa“а‚МѓtѓHѓgѓ“‚рЌЕ‘еgather_max_photon_numЊВЏW‚Я‚Д‚­‚й
+		// kиї‘е‚ЌжЋўзґўгЂ‚gather_radiusеЌЉеѕ„е†…гЃ®гѓ•г‚©гѓ€гѓіг‚’жњЂе¤§gather_max_photon_numеЂ‹й›†г‚ЃгЃ¦гЃЏг‚‹
 		photon_map->SearchKNN(&pqueue, PhotonMap::Query(hitpoint, orienting_normal, gather_radius, gahter_max_photon_num));
 		Color accumulated_flux;
 		double max_distance2 = -1;
 
-		// ѓLѓ…Ѓ[‚©‚зѓtѓHѓgѓ“‚рЋж‚иЏo‚µvector‚ЙЉi”[‚·‚й
+		// г‚­гѓҐгѓјгЃ‹г‚‰гѓ•г‚©гѓ€гѓіг‚’еЏ–г‚Ље‡єгЃ—vectorгЃ«ж јзґЌгЃ™г‚‹
 		std::vector<const PhotonForQueue> photons;
 		photons.reserve(pqueue.size());
 		for (;!pqueue.empty();) {
@@ -412,70 +412,70 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 			max_distance2 = std::max(max_distance2, p.distance2);
 		}
 
-		// ‰~ђЌѓtѓBѓ‹ѓ^‚рЋg—p‚µ‚Д•ъЋЛ‹P“xђ„’и‚·‚й
+		// е††йЊђгѓ•г‚Јгѓ«г‚їг‚’дЅїз”ЁгЃ—гЃ¦ж”ѕе°„ијќеє¦жЋЁе®љгЃ™г‚‹
 		const double max_distance = sqrt(max_distance2);
 		const double k = 1.1;
 		for (int i = 0; i < photons.size(); i ++) {
-			const double w = 1.0 - (sqrt(photons[i].distance2) / (k * max_distance)); // ‰~ђЌѓtѓBѓ‹ѓ^‚МЏd‚Э
-			const Color v = Multiply(obj.color, photons[i].photon->power) / PI; // Diffuse–К‚МBRDF = 1.0 / ѓО‚Е‚ ‚Б‚Ѕ‚М‚Е‚±‚к‚р‚©‚Ї‚й
+			const double w = 1.0 - (sqrt(photons[i].distance2) / (k * max_distance)); // е††йЊђгѓ•г‚Јгѓ«г‚їгЃ®й‡ЌгЃї
+			const Color v = Multiply(obj.color, photons[i].photon->power) / PI; // DiffuseйќўгЃ®BRDF = 1.0 / ПЂгЃ§гЃ‚гЃЈгЃџгЃ®гЃ§гЃ“г‚Њг‚’гЃ‹гЃ‘г‚‹
 			accumulated_flux = accumulated_flux + w * v;
 		}
-		accumulated_flux = accumulated_flux / (1.0 - 2.0 / (3.0 * k)); // ‰~ђЌѓtѓBѓ‹ѓ^‚МЊWђ”
+		accumulated_flux = accumulated_flux / (1.0 - 2.0 / (3.0 * k)); // е††йЊђгѓ•г‚Јгѓ«г‚їгЃ®дї‚ж•°
 		if (max_distance2 > 0.0) {
 			return obj.emission + accumulated_flux / (PI * max_distance2) / russian_roulette_probability;
 		}
 	} break;
 
 
-	// SPECULAR‚ЖREFRACTION‚МЏкЌ‡‚НѓpѓXѓgѓЊЃ[ѓVѓ“ѓO‚Ж‚Щ‚Ж‚с‚З•П‚н‚з‚И‚ўЃB
-	// ’PЏѓ‚Й”ЅЋЛ•ыЊь‚в‹ьђЬ•ыЊь‚М•ъЋЛ‹P“x(Radiance)‚рradiance()‚Е‹Ѓ‚Я‚й‚ѕ‚ЇЃB
+	// SPECULARгЃЁREFRACTIONгЃ®е ґеђ€гЃЇгѓ‘г‚№гѓ€гѓ¬гѓјг‚·гѓіг‚°гЃЁгЃ»гЃЁг‚“гЃ©е¤‰г‚Џг‚‰гЃЄгЃ„гЂ‚
+	// еЌзґ”гЃ«еЏЌе°„ж–№еђ‘г‚„е±€жЉж–№еђ‘гЃ®ж”ѕе°„ијќеє¦(Radiance)г‚’radiance()гЃ§ж±‚г‚Ѓг‚‹гЃ гЃ‘гЂ‚
 
 	case SPECULAR: {
-		// Љ®‘S‹ѕ–К‚Йѓqѓbѓg‚µ‚ЅЏкЌ‡ЃA”ЅЋЛ•ыЊь‚©‚з•ъЋЛ‹P“x‚р‚а‚з‚Б‚Д‚­‚й
+		// е®Ње…ЁйЏЎйќўгЃ«гѓ’гѓѓгѓ€гЃ—гЃџе ґеђ€гЂЃеЏЌе°„ж–№еђ‘гЃ‹г‚‰ж”ѕе°„ијќеє¦г‚’г‚‚г‚‰гЃЈгЃ¦гЃЏг‚‹
 		return obj.emission + radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num);
 	} break;
 	case REFRACTION: {
 		Ray reflection_ray = Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir));
-		bool into = Dot(normal, orienting_normal) > 0.0; // ѓЊѓC‚ЄѓIѓuѓWѓFѓNѓg‚©‚зЏo‚й‚М‚©ЃA“ь‚й‚М‚©
+		bool into = Dot(normal, orienting_normal) > 0.0; // гѓ¬г‚¤гЃЊг‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ‹г‚‰е‡єг‚‹гЃ®гЃ‹гЂЃе…Ґг‚‹гЃ®гЃ‹
 
-		// Snell‚М–@‘Ґ
-		const double nc = 1.0; // ђ^‹у‚М‹ьђЬ—¦
-		const double nt = 1.5; // ѓIѓuѓWѓFѓNѓg‚М‹ьђЬ—¦
+		// SnellгЃ®жі•е‰‡
+		const double nc = 1.0; // зњџз©єгЃ®е±€жЉзЋ‡
+		const double nt = 1.5; // г‚Єгѓ–г‚ёг‚§г‚Їгѓ€гЃ®е±€жЉзЋ‡
 		const double nnt = into ? nc / nt : nt / nc;
 		const double ddn = Dot(ray.dir, orienting_normal);
 		const double cos2t = 1.0 - nnt * nnt * (1.0 - ddn * ddn);
 
-		if (cos2t < 0.0) { // ‘S”ЅЋЛ‚µ‚Ѕ	
-			// ”ЅЋЛ•ыЊь‚©‚з•ъЋЛ‹P“x‚р‚а‚з‚Б‚Д‚­‚й
+		if (cos2t < 0.0) { // е…ЁеЏЌе°„гЃ—гЃџ	
+			// еЏЌе°„ж–№еђ‘гЃ‹г‚‰ж”ѕе°„ијќеє¦г‚’г‚‚г‚‰гЃЈгЃ¦гЃЏг‚‹
 			return obj.emission + Multiply(obj.color,
 				radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num)) / russian_roulette_probability;
 		}
-		// ‹ьђЬ‚µ‚Д‚ў‚­•ыЊь
+		// е±€жЉгЃ—гЃ¦гЃ„гЃЏж–№еђ‘
 		Vec tdir = Normalize(ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
 
-		// Schlick‚Й‚ж‚йFresnel‚М”ЅЋЛЊWђ”‚М‹ЯЋ—
+		// SchlickгЃ«г‚€г‚‹FresnelгЃ®еЏЌе°„дї‚ж•°гЃ®иї‘дјј
 		const double a = nt - nc, b = nt + nc;
 		const double R0 = (a * a) / (b * b);
 		const double c = 1.0 - (into ? -ddn : Dot(tdir, normal));
 		const double Re = R0 + (1.0 - R0) * pow(c, 5.0);
-		const double Tr = 1.0 - Re; // ‹ьђЬЊх‚М‰^‚ФЊх‚М—К
+		const double Tr = 1.0 - Re; // е±€жЉе…‰гЃ®йЃ‹гЃ¶е…‰гЃ®й‡Џ
 		const double probability  = 0.25 + 0.5 * Re;
 
-		// €к’и€ИЏгѓЊѓC‚р’ЗђХ‚µ‚Ѕ‚з‹ьђЬ‚Ж”ЅЋЛ‚М‚З‚ї‚з‚©€к•ы‚р’ЗђХ‚·‚йЃBЃi‚і‚а‚И‚ў‚ЖЋwђ”“I‚ЙѓЊѓC‚Є‘ќ‚¦‚йЃj
-		// ѓЌѓVѓAѓ“ѓ‹Ѓ[ѓЊѓbѓg‚ЕЊ€’и‚·‚йЃB
+		// дёЂе®љд»ҐдёЉгѓ¬г‚¤г‚’иїЅи·ЎгЃ—гЃџг‚‰е±€жЉгЃЁеЏЌе°„гЃ®гЃ©гЃЎг‚‰гЃ‹дёЂж–№г‚’иїЅи·ЎгЃ™г‚‹гЂ‚пј€гЃ•г‚‚гЃЄгЃ„гЃЁжЊ‡ж•°зљ„гЃ«гѓ¬г‚¤гЃЊеў—гЃ€г‚‹пј‰
+		// гѓ­г‚·г‚ўгѓігѓ«гѓјгѓ¬гѓѓгѓ€гЃ§ж±єе®љгЃ™г‚‹гЂ‚
 		if (depth > 2) {
-			if (rand01() < probability) { // ”ЅЋЛ
+			if (rand01() < probability) { // еЏЌе°„
 				return obj.emission +
 					Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re)
 					/ probability
 					/ russian_roulette_probability;
-			} else { // ‹ьђЬ
+			} else { // е±€жЉ
 				return obj.emission +
 					Multiply(obj.color, radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr)
 					/ (1.0 - probability)
 					/ russian_roulette_probability;
 			}
-		} else { // ‹ьђЬ‚Ж”ЅЋЛ‚М—ј•ы‚р’ЗђХ
+		} else { // е±€жЉгЃЁеЏЌе°„гЃ®дёЎж–№г‚’иїЅи·Ў
 			return obj.emission +
 				Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re
 				+ radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr) / russian_roulette_probability;
@@ -487,7 +487,7 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 }
 
 
-// *** .hdrѓtѓHЃ[ѓ}ѓbѓg‚ЕЏo—Н‚·‚й‚Ѕ‚Я‚МЉЦђ” ***
+// *** .hdrгѓ•г‚©гѓјгѓћгѓѓгѓ€гЃ§е‡єеЉ›гЃ™г‚‹гЃџг‚ЃгЃ®й–ўж•° ***
 struct HDRPixel {
 	unsigned char r, g, b, e;
 	HDRPixel(const unsigned char r_ = 0, const unsigned char g_ = 0, const unsigned char b_ = 0, const unsigned char e_ = 0) :
@@ -503,7 +503,7 @@ struct HDRPixel {
 
 };
 
-// double‚МRGB—v‘f‚р.hdrѓtѓHЃ[ѓ}ѓbѓg—p‚Й•ПЉ·
+// doubleгЃ®RGBи¦Ѓзґ г‚’.hdrгѓ•г‚©гѓјгѓћгѓѓгѓ€з”ЁгЃ«е¤‰жЏ›
 HDRPixel get_hdr_pixel(const Color &color) {
 	double d = std::max(color.x, std::max(color.y, color.z));
 	if (d <= 1e-32)
@@ -514,22 +514,22 @@ HDRPixel get_hdr_pixel(const Color &color) {
 	return HDRPixel(color.x * d, color.y * d, color.z * d, e + 128);
 }
 
-// Џ‘‚«Џo‚µ—pЉЦђ”
+// ж›ёгЃЌе‡єгЃ—з”Ёй–ўж•°
 void save_hdr_file(const std::string &filename, const Color* image, const int width, const int height) {
 	FILE *fp = fopen(filename.c_str(), "wb");
 	if (fp == NULL) {
 		std::cerr << "Error: " << filename << std::endl;
 		return;
 	}
-	// .hdrѓtѓHЃ[ѓ}ѓbѓg‚ЙЏ]‚Б‚ДѓfЃ[ѓ^‚рЏ‘‚«‚ѕ‚·
-	// ѓwѓbѓ_
+	// .hdrгѓ•г‚©гѓјгѓћгѓѓгѓ€гЃ«еѕ“гЃЈгЃ¦гѓ‡гѓјг‚їг‚’ж›ёгЃЌгЃ гЃ™
+	// гѓгѓѓгѓЂ
 	unsigned char ret = 0x0a;
 	fprintf(fp, "#?RADIANCE%c", (unsigned char)ret);
 	fprintf(fp, "# Made with 100%% pure HDR Shop%c", ret);
 	fprintf(fp, "FORMAT=32-bit_rle_rgbe%c", ret);
 	fprintf(fp, "EXPOSURE=1.0000000000000%c%c", ret, ret);
 
-	// ‹P“x’lЏ‘‚«Џo‚µ
+	// ијќеє¦еЂ¤ж›ёгЃЌе‡єгЃ—
 	fprintf(fp, "-Y %d +X %d%c", height, width, ret);
 	for (int i = height - 1; i >= 0; i --) {
 		std::vector<HDRPixel> line;
@@ -560,14 +560,14 @@ int main(int argc, char **argv) {
 	double gather_photon_radius = 32.0;
 	int gahter_max_photon_num = 64;
 
-	// ѓJѓЃѓ‰€К’u
+	// г‚«гѓЎгѓ©дЅЌзЅ®
 	Ray camera(Vec(50.0, 52.0, 295.6), Normalize(Vec(0.0, -0.042612, -1.0)));
-	// ѓVЃ[ѓ““а‚Е‚МѓXѓNѓЉЃ[ѓ“‚Мx,y•ыЊь‚МѓxѓNѓgѓ‹
+	// г‚·гѓјгѓіе†…гЃ§гЃ®г‚№г‚ЇгѓЄгѓјгѓігЃ®x,yж–№еђ‘гЃ®гѓ™г‚Їгѓ€гѓ«
 	Vec cx = Vec(width * 0.5135 / height);
 	Vec cy = Normalize(Cross(cx, camera.dir)) * 0.5135;
 	Color *image = new Color[width * height];
 
-	// ѓtѓHѓgѓ“ѓ}ѓbѓvЌ\’z
+	// гѓ•г‚©гѓ€гѓігѓћгѓѓгѓ—ж§‹зЇ‰
 	PhotonMap photon_map;
 	create_photon_map(photon_num, &photon_map);
 
@@ -579,11 +579,11 @@ int main(int argc, char **argv) {
 			int image_index = y * width + x;	
 			image[image_index] = Color();
 
-			// 2x2‚МѓTѓuѓsѓNѓZѓ‹ѓTѓ“ѓvѓЉѓ“ѓO
+			// 2x2гЃ®г‚µгѓ–гѓ”г‚Їг‚»гѓ«г‚µгѓігѓ—гѓЄгѓіг‚°
 			for (int sy = 0; sy < 2; sy ++) {
 				for (int sx = 0; sx < 2; sx ++) {
-					// ѓeѓ“ѓgѓtѓBѓ‹ѓ^Ѓ[‚Й‚ж‚Б‚ДѓTѓ“ѓvѓЉѓ“ѓO
-					// ѓsѓNѓZѓ‹”Н€Н‚Е€к—l‚ЙѓTѓ“ѓvѓЉѓ“ѓO‚·‚й‚М‚Е‚Н‚И‚­ЃAѓsѓNѓZѓ‹’†‰›•t‹Я‚ЙѓTѓ“ѓvѓ‹‚Є‚Ѕ‚­‚і‚сЏW‚Ь‚й‚ж‚¤‚Й•О‚и‚рђ¶‚¶‚і‚№‚й
+					// гѓ†гѓігѓ€гѓ•г‚Јгѓ«г‚їгѓјгЃ«г‚€гЃЈгЃ¦г‚µгѓігѓ—гѓЄгѓіг‚°
+					// гѓ”г‚Їг‚»гѓ«зЇ„е›ІгЃ§дёЂж§гЃ«г‚µгѓігѓ—гѓЄгѓіг‚°гЃ™г‚‹гЃ®гЃ§гЃЇгЃЄгЃЏгЂЃгѓ”г‚Їг‚»гѓ«дё­е¤®д»иї‘гЃ«г‚µгѓігѓ—гѓ«гЃЊгЃџгЃЏгЃ•г‚“й›†гЃѕг‚‹г‚€гЃ†гЃ«еЃЏг‚Љг‚’з”џгЃгЃ•гЃ›г‚‹
 					const double r1 = 2.0 * rand01(), dx = r1 < 1.0 ? sqrt(r1) - 1.0 : 1.0 - sqrt(2.0 - r1);
 					const double r2 = 2.0 * rand01(), dy = r2 < 1.0 ? sqrt(r2) - 1.0 : 1.0 - sqrt(2.0 - r2);
 					Vec dir = cx * (((sx + 0.5 + dx) / 2.0 + x) / width - 0.5) +
@@ -594,6 +594,6 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// .hdrѓtѓHЃ[ѓ}ѓbѓg‚ЕЏo—Н
+	// .hdrгѓ•г‚©гѓјгѓћгѓѓгѓ€гЃ§е‡єеЉ›
 	save_hdr_file(std::string("image.hdr"), image, width, height);
 }
