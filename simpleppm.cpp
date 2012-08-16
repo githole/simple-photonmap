@@ -214,6 +214,27 @@ public:
 	}
 };
 
+// 以下プログレッシブフォトンマップ用データ構造
+struct Hitpoint {
+	Vec position;
+	Vec normal;
+	Vec incident;
+	int id;
+	int image_index;
+
+	double weight;
+	float R;
+	int N;
+	Vec accumulated_color;
+	Vec emission_color;
+
+	Hitpoint(const Vec &position_, const Vec &normal_, const Vec &incident_, const int id_, const int image_index_, const double weight_, const Vec &emission_color_) :
+	position(position_), normal(normal_), incident(incident_), id(id_), image_index(image_index_), weight(weight_), emission_color(emission_color_) {
+		N = 0;
+		R = 5.0;
+	}
+};
+
 // *** レンダリングするシーンデータ ****
 // from smallpt
 Sphere spheres[] = {
@@ -243,6 +264,88 @@ inline bool intersect_scene(const Ray &ray, double *t, int *id) {
 		}
 	}
 	return *t < INF;
+}
+
+// プログレッシブフォトンマップの前処理。
+// シーンを普通に（パストレ等のように）追跡する。拡散面にあたったらその位置をHitpointに保存する。
+// weightはロシアンルーレットの確率等を保存しておく（あとで使う）。
+void trace_scene(const Ray &ray, const int image_index, std::vector<Hitpoint> &hitpoints, const double weight, const int depth) {
+	double t; // レイからシーンの交差位置までの距離
+	int id;   // 交差したシーン内オブジェクトのID
+	if (!intersect_scene(ray, &t, &id))
+		return;
+
+	const Sphere &obj = spheres[id];
+	const Vec hitpoint = ray.org + t * ray.dir; // 交差位置
+	const Vec normal  = Normalize(hitpoint - obj.position); // 交差位置の法線
+	const Vec orienting_normal = Dot(normal, ray.dir) < 0.0 ? normal : (-1.0 * normal); // 交差位置の法線（物体からのレイの入出を考慮）
+
+	// 色の反射率最大のものを得る。ロシアンルーレットで使う。
+	// ロシアンルーレットの閾値は任意だが色の反射率等を使うとより良い。
+	double russian_roulette_probability = std::max(obj.color.x, std::max(obj.color.y, obj.color.z));
+	// 一定以上レイを追跡したらロシアンルーレットを実行し追跡を打ち切るかどうかを判断する
+	if (depth > MaxDepth) {
+		if (rand01() >= russian_roulette_probability)
+			return;
+	} else
+		russian_roulette_probability = 1.0; // ロシアンルーレット実行しなかった
+
+	switch (obj.ref_type) {
+	case DIFFUSE: {
+		hitpoints.push_back(Hitpoint(hitpoint, normal, ray.dir, id, image_index, weight / russian_roulette_probability, obj.emission));
+		return;
+	} break;
+
+	case SPECULAR: {
+		// 完全鏡面にヒットした場合、反射方向から放射輝度をもらってくる
+		trace_scene(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), image_index, hitpoints, weight / russian_roulette_probability, depth+1);
+		return;
+	} break;
+	case REFRACTION: {
+		Ray reflection_ray = Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir));
+		bool into = Dot(normal, orienting_normal) > 0.0; // レイがオブジェクトから出るのか、入るのか
+
+		// Snellの法則
+		const double nc = 1.0; // 真空の屈折率
+		const double nt = 1.5; // オブジェクトの屈折率
+		const double nnt = into ? nc / nt : nt / nc;
+		const double ddn = Dot(ray.dir, orienting_normal);
+		const double cos2t = 1.0 - nnt * nnt * (1.0 - ddn * ddn);
+		
+		if (cos2t < 0.0) { // 全反射した	
+			// 反射方向から放射輝度をもらってくる
+			trace_scene(reflection_ray, image_index, hitpoints, weight / russian_roulette_probability, depth+1);
+			return;
+		}
+		// 屈折していく方向
+		Vec tdir = Normalize(ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
+
+		// SchlickによるFresnelの反射係数の近似
+		const double a = nt - nc, b = nt + nc;
+		const double R0 = (a * a) / (b * b);
+		const double c = 1.0 - (into ? -ddn : Dot(tdir, normal));
+		const double Re = R0 + (1.0 - R0) * pow(c, 5.0);
+		const double Tr = 1.0 - Re; // 屈折光の運ぶ光の量
+		const double probability  = 0.25 + 0.5 * Re;
+		
+		// 一定以上レイを追跡したら屈折と反射のどちらか一方を追跡する。
+		// ロシアンルーレットで決定する。
+		if (depth > 2) {
+			if (rand01() < probability) { // 反射
+				trace_scene(reflection_ray, image_index, hitpoints, Re * weight / probability / russian_roulette_probability, depth+1);
+				return;
+			} else { // 屈折
+				trace_scene(Ray(hitpoint, tdir), image_index, hitpoints, Tr * weight / (1.0 - probability) / russian_roulette_probability, depth+1);
+				return;
+			}
+		} else { // 屈折と反射の両方を追跡
+			trace_scene(reflection_ray, image_index, hitpoints, Re * weight / russian_roulette_probability, depth+1);
+			trace_scene(Ray(hitpoint, tdir), image_index, hitpoints, Tr * weight / russian_roulette_probability, depth+1);
+			return;
+		}
+	} break;
+	}
+
 }
 
 // フォトン追跡法によりフォトンマップ構築
@@ -372,119 +475,62 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 	std::cout << "Done." << std::endl;
 }
 
-// ray方向からの放射輝度を求める
-Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const double gather_radius, const int gahter_max_photon_num) {
-	double t; // レイからシーンの交差位置までの距離
-	int id;   // 交差したシーン内オブジェクトのID
-	if (!intersect_scene(ray, &t, &id))
-		return BackgroundColor;
-
-	const Sphere &obj = spheres[id];
-	const Vec hitpoint = ray.org + t * ray.dir; // 交差位置
-	const Vec normal  = Normalize(hitpoint - obj.position); // 交差位置の法線
-	const Vec orienting_normal = Dot(normal, ray.dir) < 0.0 ? normal : (-1.0 * normal); // 交差位置の法線（物体からのレイの入出を考慮）
-
-	// 色の反射率最大のものを得る。ロシアンルーレットで使う。
-	// ロシアンルーレットの閾値は任意だが色の反射率等を使うとより良い。
-	double russian_roulette_probability = std::max(obj.color.x, std::max(obj.color.y, obj.color.z));
-	// 一定以上レイを追跡したらロシアンルーレットを実行し追跡を打ち切るかどうかを判断する
-	if (depth > MaxDepth) {
-		if (rand01() >= russian_roulette_probability)
-			return obj.emission;
-	} else
-		russian_roulette_probability = 1.0; // ロシアンルーレット実行しなかった
-
-	switch (obj.ref_type) {
-	case DIFFUSE: {
-		// フォトンマップをつかって放射輝度推定する
+// Hitpointの集合からプログレッシブに画像更新
+void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, std::vector<Hitpoint> &hitpoints, const double Alpha, const int gahter_max_photon_num) {
+	// 各ヒットポイントの更新
+	for (int hi = 0; hi < hitpoints.size(); hi ++) {
 		PhotonQueue pqueue;
 		// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
-		photon_map->SearchKNN(&pqueue, PhotonMap::Query(hitpoint, orienting_normal, gather_radius, gahter_max_photon_num));
-		Color accumulated_flux;
-		double max_distance2 = -1;
-
+		photon_map.SearchKNN(&pqueue, PhotonMap::Query(hitpoints[hi].position, hitpoints[hi].normal, pow(hitpoints[hi].R, 2), gahter_max_photon_num));
+			
 		// キューからフォトンを取り出しvectorに格納する
 		std::vector<const PhotonForQueue> photons;
 		photons.reserve(pqueue.size());
 		for (;!pqueue.empty();) {
 			PhotonForQueue p = pqueue.top(); pqueue.pop();
 			photons.push_back(p);
-			max_distance2 = std::max(max_distance2, p.distance2);
 		}
 
-		// 円錐フィルタを使用して放射輝度推定する
-		const double max_distance = sqrt(max_distance2);
-		const double k = 1.1;
-		for (int i = 0; i < photons.size(); i ++) {
-			const double w = 1.0 - (sqrt(photons[i].distance2) / (k * max_distance)); // 円錐フィルタの重み
-			const Color v = Multiply(obj.color, photons[i].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
-			accumulated_flux = accumulated_flux + w * v;
-		}
-		accumulated_flux = accumulated_flux / (1.0 - 2.0 / (3.0 * k)); // 円錐フィルタの係数
-		if (max_distance2 > 0.0) {
-			return obj.emission + accumulated_flux / (PI * max_distance2) / russian_roulette_probability;
-		}
-	} break;
-
-
-	// SPECULARとREFRACTIONの場合はパストレーシングとほとんど変わらない。
-	// 単純に反射方向や屈折方向の放射輝度(Radiance)をradiance()で求めるだけ。
-
-	case SPECULAR: {
-		// 完全鏡面にヒットした場合、反射方向から放射輝度をもらってくる
-		return obj.emission + radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num);
-	} break;
-	case REFRACTION: {
-		Ray reflection_ray = Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir));
-		bool into = Dot(normal, orienting_normal) > 0.0; // レイがオブジェクトから出るのか、入るのか
-
-		// Snellの法則
-		const double nc = 1.0; // 真空の屈折率
-		const double nt = 1.5; // オブジェクトの屈折率
-		const double nnt = into ? nc / nt : nt / nc;
-		const double ddn = Dot(ray.dir, orienting_normal);
-		const double cos2t = 1.0 - nnt * nnt * (1.0 - ddn * ddn);
-		
-		if (cos2t < 0.0) { // 全反射した	
-			// 反射方向から放射輝度をもらってくる
-			return obj.emission + Multiply(obj.color,
-				radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num)) / russian_roulette_probability;
-		}
-		// 屈折していく方向
-		Vec tdir = Normalize(ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
-
-		// SchlickによるFresnelの反射係数の近似
-		const double a = nt - nc, b = nt + nc;
-		const double R0 = (a * a) / (b * b);
-		const double c = 1.0 - (into ? -ddn : Dot(tdir, normal));
-		const double Re = R0 + (1.0 - R0) * pow(c, 5.0);
-		const double Tr = 1.0 - Re; // 屈折光の運ぶ光の量
-		const double probability  = 0.25 + 0.5 * Re;
-		
-		// 一定以上レイを追跡したら屈折と反射のどちらか一方を追跡する。（さもないと指数的にレイが増える）
-		// ロシアンルーレットで決定する。
-		if (depth > 2) {
-			if (rand01() < probability) { // 反射
-				return obj.emission +
-					Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re)
-					/ probability
-					/ russian_roulette_probability;
-			} else { // 屈折
-				return obj.emission +
-					Multiply(obj.color, radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr)
-					/ (1.0 - probability)
-					/ russian_roulette_probability;
+		if (hitpoints[hi].N == 0) { // まだフォトンが一個も集められていなかった場合だけ入る
+			if (photons.size() > 0) {
+				// 初期値設定
+				hitpoints[hi].N = photons.size();
+				hitpoints[hi].R = sqrt(photons[0].distance2);
+				for (int k = 0; k < photons.size(); k ++) {
+					const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+					hitpoints[hi].accumulated_color = hitpoints[hi].accumulated_color + v;
+				}
 			}
-		} else { // 屈折と反射の両方を追跡
-			return obj.emission +
-				Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re
-				+ radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr) / russian_roulette_probability;
-		}
-	} break;
-	}
+		} else { // 二回目以降に入る
+			// 以下がプログレッシブフォトンマップのキモ
+			// 半径を狭める処理
+			const int N = hitpoints[hi].N;
+			const int M = photons.size();
+			const double newR = hitpoints[hi].R * sqrt((N + Alpha * M) / (N + M));
+			
+			// 新しく追加されたフォトンの寄与計算
+			Color tauM;
+			for (int k = 0; k < photons.size(); k ++) {
+				const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+				tauM = tauM + v;
+			}
+			const Color newtau = (hitpoints[hi].accumulated_color + tauM) * ((N + Alpha * M) / (N + M));
 
-	return Color();
+			// 更新
+			hitpoints[hi].N = N + Alpha * M;
+			hitpoints[hi].R = newR;
+			hitpoints[hi].accumulated_color = newtau;
+		}
+
+		// フォトンが一個でも集められていたら放射輝度推定する
+		if (hitpoints[hi].N > 0) {
+			image[hitpoints[hi].image_index] = image[hitpoints[hi].image_index] +
+			hitpoints[hi].emission_color + hitpoints[hi].weight * hitpoints[hi].accumulated_color / (PI * pow(hitpoints[hi].R, 2)) / (iteration_num + 1);
+		}
+	}
 }
+
+
 
 
 // *** .hdrフォーマットで出力するための関数 ***
@@ -554,11 +600,16 @@ void save_hdr_file(const std::string &filename, const Color* image, const int wi
 }
 
 int main(int argc, char **argv) {
-	int width = 640;
-	int height = 480;
-	int photon_num = 50000;
+	int width = 320;
+	int height = 240;
+	int photon_num = 10000;
 	double gather_photon_radius = 32.0;
-	int gahter_max_photon_num = 64;
+	int gahter_max_photon_num = 65536;
+	
+	// PPMのパラメータ
+	const int iteration = 1000;
+	const int output_interval = 10;
+	const double Alpha = 0.7; // PPMの重要パラメータ。詳しくは論文。
 
 	// カメラ位置
 	Ray camera(Vec(50.0, 52.0, 295.6), Normalize(Vec(0.0, -0.042612, -1.0)));
@@ -567,13 +618,9 @@ int main(int argc, char **argv) {
 	Vec cy = Normalize(Cross(cx, camera.dir)) * 0.5135;
 	Color *image = new Color[width * height];
 
-	// フォトンマップ構築
-	PhotonMap photon_map;
-	create_photon_map(photon_num, &photon_map);
-	
-// #pragma omp parallel for schedule(dynamic, 1)
+	// 一段階目のシーントレース処理
+	std::vector<Hitpoint> hitpoints;
 	for (int y = 0; y < height; y ++) {
-		std::cerr << "Rendering " << (100.0 * y / (height - 1)) << "%" << std::endl;
 		srand(y * y * y);
 		for (int x = 0; x < width; x ++) {
 			int image_index = y * width + x;	
@@ -588,12 +635,33 @@ int main(int argc, char **argv) {
 					const double r2 = 2.0 * rand01(), dy = r2 < 1.0 ? sqrt(r2) - 1.0 : 1.0 - sqrt(2.0 - r2);
 					Vec dir = cx * (((sx + 0.5 + dx) / 2.0 + x) / width - 0.5) +
 								cy * (((sy + 0.5 + dy) / 2.0 + y) / height- 0.5) + camera.dir;
-					image[image_index] = image[image_index] + radiance(Ray(camera.org + dir * 130.0, Normalize(dir)), 0, &photon_map, gather_photon_radius, gahter_max_photon_num);
+
+					// プログレッシブフォトンマップの前処理
+					trace_scene(Ray(camera.org + dir * 130.0, Normalize(dir)), image_index, hitpoints, 1.0, 0);
 				}
 			}
 		}
 	}
+
+	// 以下、二段階目のプログレッシブ処理
+
+	for (int i = 0; i < iteration; i ++) {
+		std::cout << "----- Iteration " << (i + 1) << " -----" << std::endl;
+		PhotonMap photon_map;
+		create_photon_map(photon_num, &photon_map);
+
+		for (int j = 0; j < width * height; j ++)
+			image[j] = Color();
+
+		// プログレッシブに画像更新
+		update_image(i, image, photon_map, hitpoints, Alpha, gahter_max_photon_num);
 	
-	// .hdrフォーマットで出力
-	save_hdr_file(std::string("image.hdr"), image, width, height);
+		// output_intervalごとに.hdrフォーマットで出力
+		if ((i + 1) % output_interval == 0) {
+			char fname[256];
+			sprintf(fname, "image_%04d.hdr", i + 1);
+			save_hdr_file(std::string(fname), image, width, height);
+		}
+	}
+
 }
