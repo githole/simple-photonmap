@@ -94,7 +94,7 @@ struct PhotonForQueue {
 	}
 };
 // k-NN searchで使うキュー
-typedef std::priority_queue<PhotonForQueue, std::vector<PhotonForQueue>> PhotonQueue;
+typedef std::priority_queue<PhotonForQueue, std::vector<PhotonForQueue> > PhotonQueue;
 
 // フォトンを格納するためのKD-tree
 class PhotonMap {
@@ -481,10 +481,11 @@ void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, 
 	for (int hi = 0; hi < hitpoints.size(); hi ++) {
 		PhotonQueue pqueue;
 		// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
-		photon_map.SearchKNN(&pqueue, PhotonMap::Query(hitpoints[hi].position, hitpoints[hi].normal, pow(hitpoints[hi].R, 2), gahter_max_photon_num));
+		PhotonMap::Query query(hitpoints[hi].position, hitpoints[hi].normal, pow(hitpoints[hi].R, 2), gahter_max_photon_num);
+		photon_map.SearchKNN(&pqueue, query);
 			
 		// キューからフォトンを取り出しvectorに格納する
-		std::vector<const PhotonForQueue> photons;
+		std::vector<PhotonForQueue> photons;
 		photons.reserve(pqueue.size());
 		for (;!pqueue.empty();) {
 			PhotonForQueue p = pqueue.top(); pqueue.pop();
