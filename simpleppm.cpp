@@ -84,34 +84,34 @@ struct Photon {
 	position(position_), power(power_), incident(incident_) {}
 };
 
-// PhotonQueueに乗せるためのデータ構造。struct Photonとは別に用意する。
-struct PhotonForQueue {
-	const Photon *photon;
-	double distance2;
-	PhotonForQueue(const Photon *photon_, const double distance2_) : photon(photon_), distance2(distance2_) {}
-	bool operator<(const PhotonForQueue &b) const {
-		return distance2 < b.distance2;
-	}
-};
-// k-NN searchで使うキュー
-typedef std::priority_queue<PhotonForQueue, std::vector<PhotonForQueue> > PhotonQueue;
-
-// フォトンを格納するためのKD-tree
-class PhotonMap {
+// KD-tree
+template<typename T>
+class KDTree {
 public:
 	// k-NN searchのクエリ
 	struct Query {
 		double max_distance2; // 探索の最大半径
-		size_t max_photon_num; // 最大フォトン数
+		size_t max_search_num; // 最大探索点数
 		Vec search_position; // 探索中心
 		Vec normal; // 探索中心における法線
-		Query(const Vec &search_position_, const Vec &normal_, const double max_distance2_, const size_t max_photon_num_) :
-		max_distance2(max_distance2_), normal(normal_), max_photon_num(max_photon_num_), search_position(search_position_) {}
+		Query(const Vec &search_position_, const Vec &normal_, const double max_distance2_, const size_t max_search_num_) :
+		max_distance2(max_distance2_), normal(normal_), max_search_num(max_search_num_), search_position(search_position_) {}
 	};
+	// 結果のQueueに乗せるためのデータ構造。
+	struct ElementForQueue {
+		T *point;
+		double distance2;
+		ElementForQueue(T *point_, const double distance2_) : point(point_), distance2(distance2_) {}
+		bool operator<(const ElementForQueue &b) const {
+			return distance2 < b.distance2;
+		}
+	};
+	// KNNの結果を格納するキュー
+	typedef std::priority_queue<ElementForQueue, std::vector<ElementForQueue> > ResultQueue;
 private:
-	std::vector<Photon> photons;
+	std::vector<T> points;
 	struct KDTreeNode {
-		Photon* photon;
+		T* point;
 		KDTreeNode* left;
 		KDTreeNode* right;
 		int axis;
@@ -125,55 +125,64 @@ private:
 		delete node;
 	}
 
+	void copy_to_vector(KDTreeNode* node, std::vector<T*> &vec) {
+		if (node == NULL)
+			return;
+		
+		copy_to_vector(node->left, vec);
+		copy_to_vector(node->right, vec);
+		vec.push_back(node->point);
+	}
+
 	// フツーのk-NN search。
-	void locate_photons(PhotonQueue* pqueue, KDTreeNode* node, PhotonMap::Query &query) {
+	void locate_points(typename KDTree<T>::ResultQueue* pqueue, KDTreeNode* node, typename KDTree<T>::Query &query) {
 		if (node == NULL)
 			return;
 		const int axis = node->axis;
 
 		double delta;
 		switch (axis) {
-		case 0: delta = query.search_position.x - node->photon->position.x; break;
-		case 1: delta = query.search_position.y - node->photon->position.y; break;
-		case 2: delta = query.search_position.z - node->photon->position.z; break;
+		case 0: delta = query.search_position.x - node->point->position.x; break;
+		case 1: delta = query.search_position.y - node->point->position.y; break;
+		case 2: delta = query.search_position.z - node->point->position.z; break;
 		}
 
-		// フォトン<->探索中心の距離が設定半径以下　かつ　フォトン<->探索中心の法線方向の距離が一定以下　という条件ならそのフォトンを格納
-		const Vec dir = node->photon->position - query.search_position;
+		// 対象点<->探索中心の距離が設定半径以下　かつ　対象点<->探索中心の法線方向の距離が一定以下　という条件ならその対象点格納
+		const Vec dir = node->point->position - query.search_position;
 		const double distance2 = dir.LengthSquared();
 		const double dt = Dot(query.normal, dir / sqrt(distance2));
 		if (distance2 < query.max_distance2 && fabs(dt) <= query.max_distance2 * 0.01) {
-			pqueue->push(PhotonForQueue(node->photon, distance2));
-			if (pqueue->size() > query.max_photon_num) {
+			pqueue->push(ElementForQueue(node->point, distance2));
+			if (pqueue->size() > query.max_search_num) {
 				pqueue->pop();
 				query.max_distance2 = pqueue->top().distance2;
 			}
 		}
 		if (delta > 0.0) { // みぎ
-			locate_photons(pqueue,node->right, query);
+			locate_points(pqueue,node->right, query);
 			if (delta * delta < query.max_distance2) {
-				locate_photons(pqueue, node->left, query);
+				locate_points(pqueue, node->left, query);
 			}
 		} else { // ひだり
-			locate_photons(pqueue,node->left, query);
+			locate_points(pqueue,node->left, query);
 			if (delta * delta < query.max_distance2) {
-				locate_photons(pqueue, node->right, query);
+				locate_points(pqueue, node->right, query);
 			}
 		}
 
 	}
 	
-	static bool kdtree_less_operator_x(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_x(const T& left, const T& right) {
 		return left.position.x < right.position.x;
 	}
-	static bool kdtree_less_operator_y(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_y(const T& left, const T& right) {
 		return left.position.y < right.position.y;
 	}
-	static bool kdtree_less_operator_z(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_z(const T& left, const T& right) {
 		return left.position.z < right.position.z;
 	}
 	
-	KDTreeNode* create_kdtree_sub(std::vector<Photon>::iterator begin, std::vector<Photon>::iterator end, int depth) {
+	KDTreeNode* create_kdtree_sub(typename std::vector<T>::iterator begin,typename std::vector<T>::iterator end, int depth) {
 		if (end - begin <= 0) {
 			return NULL;
 		}
@@ -187,32 +196,38 @@ private:
 		const int median = (end - begin) / 2;
 		KDTreeNode* node = new KDTreeNode;
 		node->axis = axis;
-		node->photon = &(*(begin + median));
+		node->point = &(*(begin + median));
 		// 子供
 		node->left  = create_kdtree_sub(begin,              begin + median, depth + 1);
 		node->right = create_kdtree_sub(begin + median + 1, end,            depth + 1);
 		return node;
 	}
 public:
-	PhotonMap() {
+	KDTree() {
 		root = NULL;
 	}
-	virtual ~PhotonMap() {
+	virtual ~KDTree() {
 		delete_kdtree(root);
 	}
+
+	void CopyToVector(std::vector<T*> &vec) {
+		copy_to_vector(root, vec);
+	}
+
 	size_t Size() {
-		return photons.size();
+		return points.size();
 	}
-	void SearchKNN(PhotonQueue* pqueue, PhotonMap::Query &query) {
-		locate_photons(pqueue, root, query);
+	void SearchKNN(typename KDTree::ResultQueue* pqueue, typename KDTree<T>::Query &query) {
+		locate_points(pqueue, root, query);
 	}
-	void AddPhoton(const Photon &photon) {
-		photons.push_back(photon);
+	void AddPoint(const T &point) {
+		points.push_back(point);
 	}
 	void CreateKDtree() {
-		root = create_kdtree_sub(photons.begin(), photons.end(), 0);
+		root = create_kdtree_sub(points.begin(), points.end(), 0);
 	}
 };
+typedef KDTree<Photon> PhotonMap;
 
 // 以下プログレッシブフォトンマップ用データ構造
 struct Hitpoint {
@@ -399,7 +414,7 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 			switch (obj.ref_type) {
 			case DIFFUSE: {
 				// 拡散面なのでフォトンをフォトンマップに格納する
-				photon_map->AddPhoton(Photon(hitpoint, now_flux, now_ray.dir));
+				photon_map->AddPoint(Photon(hitpoint, now_flux, now_ray.dir));
 
 				// 反射するかどうかをロシアンルーレットで決める
 				// 例によって確率は任意。今回はフォトンマップ本に従ってRGBの反射率の平均を使う
@@ -479,16 +494,16 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, std::vector<Hitpoint> &hitpoints, const double Alpha, const int gahter_max_photon_num) {
 	// 各ヒットポイントの更新
 	for (int hi = 0; hi < hitpoints.size(); hi ++) {
-		PhotonQueue pqueue;
+		PhotonMap::ResultQueue pqueue;
 		// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
 		PhotonMap::Query query(hitpoints[hi].position, hitpoints[hi].normal, pow(hitpoints[hi].R, 2), gahter_max_photon_num);
 		photon_map.SearchKNN(&pqueue, query);
 			
 		// キューからフォトンを取り出しvectorに格納する
-		std::vector<PhotonForQueue> photons;
+		std::vector<PhotonMap::ElementForQueue> photons;
 		photons.reserve(pqueue.size());
 		for (;!pqueue.empty();) {
-			PhotonForQueue p = pqueue.top(); pqueue.pop();
+			PhotonMap::ElementForQueue p = pqueue.top(); pqueue.pop();
 			photons.push_back(p);
 		}
 
@@ -498,7 +513,7 @@ void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, 
 				hitpoints[hi].N = photons.size();
 				hitpoints[hi].R = sqrt(photons[0].distance2);
 				for (int k = 0; k < photons.size(); k ++) {
-					const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+					const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].point->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
 					hitpoints[hi].accumulated_color = hitpoints[hi].accumulated_color + v;
 				}
 			}
@@ -512,7 +527,7 @@ void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, 
 			// 新しく追加されたフォトンの寄与計算
 			Color tauM;
 			for (int k = 0; k < photons.size(); k ++) {
-				const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+				const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].point->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
 				tauM = tauM + v;
 			}
 			const Color newtau = (hitpoints[hi].accumulated_color + tauM) * ((N + Alpha * M) / (N + M));
