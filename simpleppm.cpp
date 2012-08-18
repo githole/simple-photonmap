@@ -84,34 +84,34 @@ struct Photon {
 	position(position_), power(power_), incident(incident_) {}
 };
 
-// PhotonQueueに乗せるためのデータ構造。struct Photonとは別に用意する。
-struct PhotonForQueue {
-	const Photon *photon;
-	double distance2;
-	PhotonForQueue(const Photon *photon_, const double distance2_) : photon(photon_), distance2(distance2_) {}
-	bool operator<(const PhotonForQueue &b) const {
-		return distance2 < b.distance2;
-	}
-};
-// k-NN searchで使うキュー
-typedef std::priority_queue<PhotonForQueue, std::vector<PhotonForQueue> > PhotonQueue;
-
-// フォトンを格納するためのKD-tree
-class PhotonMap {
+// KD-tree
+template<typename T>
+class KDTree {
 public:
 	// k-NN searchのクエリ
 	struct Query {
 		double max_distance2; // 探索の最大半径
-		size_t max_photon_num; // 最大フォトン数
+		size_t max_search_num; // 最大探索点数
 		Vec search_position; // 探索中心
 		Vec normal; // 探索中心における法線
-		Query(const Vec &search_position_, const Vec &normal_, const double max_distance2_, const size_t max_photon_num_) :
-		max_distance2(max_distance2_), normal(normal_), max_photon_num(max_photon_num_), search_position(search_position_) {}
+		Query(const Vec &search_position_, const Vec &normal_, const double max_distance2_, const size_t max_search_num_) :
+		max_distance2(max_distance2_), normal(normal_), max_search_num(max_search_num_), search_position(search_position_) {}
 	};
+	// 結果のQueueに乗せるためのデータ構造。
+	struct ElementForQueue {
+		T *point;
+		double distance2;
+		ElementForQueue(T *point_, const double distance2_) : point(point_), distance2(distance2_) {}
+		bool operator<(const ElementForQueue &b) const {
+			return distance2 < b.distance2;
+		}
+	};
+	// KNNの結果を格納するキュー
+	typedef std::priority_queue<ElementForQueue, std::vector<ElementForQueue> > ResultQueue;
 private:
-	std::vector<Photon> photons;
+	std::vector<T> points;
 	struct KDTreeNode {
-		Photon* photon;
+		T* point;
 		KDTreeNode* left;
 		KDTreeNode* right;
 		int axis;
@@ -125,55 +125,64 @@ private:
 		delete node;
 	}
 
+	void copy_to_vector(KDTreeNode* node, std::vector<T*> &vec) {
+		if (node == NULL)
+			return;
+		
+		copy_to_vector(node->left, vec);
+		copy_to_vector(node->right, vec);
+		vec.push_back(node->point);
+	}
+
 	// フツーのk-NN search。
-	void locate_photons(PhotonQueue* pqueue, KDTreeNode* node, PhotonMap::Query &query) {
+	void locate_points(typename KDTree<T>::ResultQueue* pqueue, KDTreeNode* node, typename KDTree<T>::Query &query) {
 		if (node == NULL)
 			return;
 		const int axis = node->axis;
 
 		double delta;
 		switch (axis) {
-		case 0: delta = query.search_position.x - node->photon->position.x; break;
-		case 1: delta = query.search_position.y - node->photon->position.y; break;
-		case 2: delta = query.search_position.z - node->photon->position.z; break;
+		case 0: delta = query.search_position.x - node->point->position.x; break;
+		case 1: delta = query.search_position.y - node->point->position.y; break;
+		case 2: delta = query.search_position.z - node->point->position.z; break;
 		}
 
-		// フォトン<->探索中心の距離が設定半径以下　かつ　フォトン<->探索中心の法線方向の距離が一定以下　という条件ならそのフォトンを格納
-		const Vec dir = node->photon->position - query.search_position;
+		// 対象点<->探索中心の距離が設定半径以下　かつ　対象点<->探索中心の法線方向の距離が一定以下　という条件ならその対象点格納
+		const Vec dir = node->point->position - query.search_position;
 		const double distance2 = dir.LengthSquared();
 		const double dt = Dot(query.normal, dir / sqrt(distance2));
 		if (distance2 < query.max_distance2 && fabs(dt) <= query.max_distance2 * 0.01) {
-			pqueue->push(PhotonForQueue(node->photon, distance2));
-			if (pqueue->size() > query.max_photon_num) {
+			pqueue->push(ElementForQueue(node->point, distance2));
+			if (pqueue->size() > query.max_search_num) {
 				pqueue->pop();
 				query.max_distance2 = pqueue->top().distance2;
 			}
 		}
 		if (delta > 0.0) { // みぎ
-			locate_photons(pqueue,node->right, query);
+			locate_points(pqueue,node->right, query);
 			if (delta * delta < query.max_distance2) {
-				locate_photons(pqueue, node->left, query);
+				locate_points(pqueue, node->left, query);
 			}
 		} else { // ひだり
-			locate_photons(pqueue,node->left, query);
+			locate_points(pqueue,node->left, query);
 			if (delta * delta < query.max_distance2) {
-				locate_photons(pqueue, node->right, query);
+				locate_points(pqueue, node->right, query);
 			}
 		}
 
 	}
 	
-	static bool kdtree_less_operator_x(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_x(const T& left, const T& right) {
 		return left.position.x < right.position.x;
 	}
-	static bool kdtree_less_operator_y(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_y(const T& left, const T& right) {
 		return left.position.y < right.position.y;
 	}
-	static bool kdtree_less_operator_z(const Photon& left, const Photon& right) {
+	static bool kdtree_less_operator_z(const T& left, const T& right) {
 		return left.position.z < right.position.z;
 	}
 	
-	KDTreeNode* create_kdtree_sub(std::vector<Photon>::iterator begin, std::vector<Photon>::iterator end, int depth) {
+	KDTreeNode* create_kdtree_sub(typename std::vector<T>::iterator begin,typename std::vector<T>::iterator end, int depth) {
 		if (end - begin <= 0) {
 			return NULL;
 		}
@@ -187,32 +196,38 @@ private:
 		const int median = (end - begin) / 2;
 		KDTreeNode* node = new KDTreeNode;
 		node->axis = axis;
-		node->photon = &(*(begin + median));
+		node->point = &(*(begin + median));
 		// 子供
 		node->left  = create_kdtree_sub(begin,              begin + median, depth + 1);
 		node->right = create_kdtree_sub(begin + median + 1, end,            depth + 1);
 		return node;
 	}
 public:
-	PhotonMap() {
+	KDTree() {
 		root = NULL;
 	}
-	virtual ~PhotonMap() {
+	virtual ~KDTree() {
 		delete_kdtree(root);
 	}
+
+	void CopyToVector(std::vector<T*> &vec) {
+		copy_to_vector(root, vec);
+	}
+
 	size_t Size() {
-		return photons.size();
+		return points.size();
 	}
-	void SearchKNN(PhotonQueue* pqueue, PhotonMap::Query &query) {
-		locate_photons(pqueue, root, query);
+	void SearchKNN(typename KDTree::ResultQueue* pqueue, typename KDTree<T>::Query &query) {
+		locate_points(pqueue, root, query);
 	}
-	void AddPhoton(const Photon &photon) {
-		photons.push_back(photon);
+	void AddPoint(const T &point) {
+		points.push_back(point);
 	}
 	void CreateKDtree() {
-		root = create_kdtree_sub(photons.begin(), photons.end(), 0);
+		root = create_kdtree_sub(points.begin(), points.end(), 0);
 	}
 };
+//typedef KDTree<Photon> PhotonMap;
 
 // 以下プログレッシブフォトンマップ用データ構造
 struct Hitpoint {
@@ -234,6 +249,7 @@ struct Hitpoint {
 		R = 5.0;
 	}
 };
+typedef KDTree<Hitpoint> HitpointMap;
 
 // *** レンダリングするシーンデータ ****
 // from smallpt
@@ -269,7 +285,7 @@ inline bool intersect_scene(const Ray &ray, double *t, int *id) {
 // プログレッシブフォトンマップの前処理。
 // シーンを普通に（パストレ等のように）追跡する。拡散面にあたったらその位置をHitpointに保存する。
 // weightはロシアンルーレットの確率等を保存しておく（あとで使う）。
-void trace_scene(const Ray &ray, const int image_index, std::vector<Hitpoint> &hitpoints, const double weight, const int depth) {
+void trace_scene(const Ray &ray, const int image_index, HitpointMap *hitpoints, const double weight, const int depth) {
 	double t; // レイからシーンの交差位置までの距離
 	int id;   // 交差したシーン内オブジェクトのID
 	if (!intersect_scene(ray, &t, &id))
@@ -292,7 +308,7 @@ void trace_scene(const Ray &ray, const int image_index, std::vector<Hitpoint> &h
 
 	switch (obj.ref_type) {
 	case DIFFUSE: {
-		hitpoints.push_back(Hitpoint(hitpoint, normal, ray.dir, id, image_index, weight / russian_roulette_probability, obj.emission));
+		hitpoints->AddPoint(Hitpoint(hitpoint, normal, ray.dir, id, image_index, weight / russian_roulette_probability, obj.emission));
 		return;
 	} break;
 
@@ -345,11 +361,10 @@ void trace_scene(const Ray &ray, const int image_index, std::vector<Hitpoint> &h
 		}
 	} break;
 	}
-
 }
 
-// フォトン追跡法によりフォトンマップ構築
-void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
+// フォトン追跡して各フォトンのあたった場所でヒットポイント更新。
+void trace_photon(HitpointMap &hitpoints, const int shoot_photon_num, const double Alpha, const double gather_hitpoint_radius, const int gather_max_hitpoints) {
 	std::cout << "Shooting photons... (" << shoot_photon_num << " photons)" << std::endl;
 	for (int i = 0; i < shoot_photon_num; i ++) {
 		// 光源からフォトンを発射する
@@ -398,8 +413,49 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 
 			switch (obj.ref_type) {
 			case DIFFUSE: {
-				// 拡散面なのでフォトンをフォトンマップに格納する
-				photon_map->AddPhoton(Photon(hitpoint, now_flux, now_ray.dir));
+				// 拡散面なので周囲のヒットポイントを探索、更新を行う
+				HitpointMap::ResultQueue hqueue;		
+				
+				// このhitpointはフォトンの位置です
+				HitpointMap::Query query(hitpoint, orienting_normal, gather_hitpoint_radius, gather_max_hitpoints);
+				hitpoints.SearchKNN(&hqueue, query);
+				// キューからフォトンを取り出しvectorに格納する
+				std::vector<HitpointMap::ElementForQueue> hits;
+				hits.reserve(hqueue.size());
+				for (;!hqueue.empty();) {
+					HitpointMap::ElementForQueue p = hqueue.top(); hqueue.pop();
+					hits.push_back(p);
+				}
+
+				for (int hi = 0; hi < hits.size(); hi ++) {
+					if (hits[hi].point->N == 0) { // まだフォトンが一個も集められていなかった場合だけ入る
+						// 初期値設定
+						hits[hi].point->N = 1;
+						hits[hi].point->R = (hits[hi].point->position - hitpoint).Length();
+						//std::cout << hits[hi].point->R << " ";
+						const Color v = Multiply(spheres[hits[hi].point->id].color, now_flux) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+						hits[hi].point->accumulated_color = hits[hi].point->accumulated_color + v;
+					} else { // 二回目以降に入る
+
+						if ((hits[hi].point->position - hitpoint).Length() < hits[hi].point->R) {
+							// 以下がプログレッシブフォトンマップのキモ
+							// 半径を狭める処理
+							const int N = hits[hi].point->N;
+							const int M = 1; // 新しく追加されたフォトンは一個だけ
+							const double newR = hits[hi].point->R * sqrt((N + Alpha * M) / (N + M));
+			
+							// 新しく追加されたフォトンの寄与計算
+							const Color tauM = Multiply(spheres[hits[hi].point->id].color, now_flux) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+							const Color newtau = (hits[hi].point->accumulated_color + tauM) * ((N + Alpha * M) / (N + M));
+
+							// 更新
+							hits[hi].point->N = N + Alpha * M;
+							hits[hi].point->R = newR;
+							hits[hi].point->accumulated_color = newtau;
+						}
+
+					}
+				}
 
 				// 反射するかどうかをロシアンルーレットで決める
 				// 例によって確率は任意。今回はフォトンマップ本に従ってRGBの反射率の平均を使う
@@ -469,70 +525,17 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 			}
 		}
 	}
-	std::cout << "Done. (" << photon_map->Size() <<  " photons are stored)" << std::endl;
-	std::cout << "Creating KD-tree..." << std::endl;
-	photon_map->CreateKDtree();
-	std::cout << "Done." << std::endl;
 }
 
-// Hitpointの集合からプログレッシブに画像更新
-void update_image(const int iteration_num, Color *image, PhotonMap &photon_map, std::vector<Hitpoint> &hitpoints, const double Alpha, const int gahter_max_photon_num) {
-	// 各ヒットポイントの更新
+void update_image(const int iteration_num, Color *image, int width, int height, std::vector<Hitpoint*> &hitpoints) {
 	for (int hi = 0; hi < hitpoints.size(); hi ++) {
-		PhotonQueue pqueue;
-		// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
-		PhotonMap::Query query(hitpoints[hi].position, hitpoints[hi].normal, pow(hitpoints[hi].R, 2), gahter_max_photon_num);
-		photon_map.SearchKNN(&pqueue, query);
-			
-		// キューからフォトンを取り出しvectorに格納する
-		std::vector<PhotonForQueue> photons;
-		photons.reserve(pqueue.size());
-		for (;!pqueue.empty();) {
-			PhotonForQueue p = pqueue.top(); pqueue.pop();
-			photons.push_back(p);
-		}
-
-		if (hitpoints[hi].N == 0) { // まだフォトンが一個も集められていなかった場合だけ入る
-			if (photons.size() > 0) {
-				// 初期値設定
-				hitpoints[hi].N = photons.size();
-				hitpoints[hi].R = sqrt(photons[0].distance2);
-				for (int k = 0; k < photons.size(); k ++) {
-					const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
-					hitpoints[hi].accumulated_color = hitpoints[hi].accumulated_color + v;
-				}
-			}
-		} else { // 二回目以降に入る
-			// 以下がプログレッシブフォトンマップのキモ
-			// 半径を狭める処理
-			const int N = hitpoints[hi].N;
-			const int M = photons.size();
-			const double newR = hitpoints[hi].R * sqrt((N + Alpha * M) / (N + M));
-			
-			// 新しく追加されたフォトンの寄与計算
-			Color tauM;
-			for (int k = 0; k < photons.size(); k ++) {
-				const Color v = Multiply(spheres[hitpoints[hi].id].color, photons[k].photon->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
-				tauM = tauM + v;
-			}
-			const Color newtau = (hitpoints[hi].accumulated_color + tauM) * ((N + Alpha * M) / (N + M));
-
-			// 更新
-			hitpoints[hi].N = N + Alpha * M;
-			hitpoints[hi].R = newR;
-			hitpoints[hi].accumulated_color = newtau;
-		}
-
 		// フォトンが一個でも集められていたら放射輝度推定する
-		if (hitpoints[hi].N > 0) {
-			image[hitpoints[hi].image_index] = image[hitpoints[hi].image_index] +
-			hitpoints[hi].emission_color + hitpoints[hi].weight * hitpoints[hi].accumulated_color / (PI * pow(hitpoints[hi].R, 2)) / (iteration_num + 1);
+		if (hitpoints[hi]->N > 0) {
+			image[hitpoints[hi]->image_index] = image[hitpoints[hi]->image_index] +
+			hitpoints[hi]->emission_color + hitpoints[hi]->weight * hitpoints[hi]->accumulated_color / (PI * pow(hitpoints[hi]->R, 2)) / (iteration_num + 1);
 		}
 	}
 }
-
-
-
 
 // *** .hdrフォーマットで出力するための関数 ***
 struct HDRPixel {
@@ -604,9 +607,8 @@ int main(int argc, char **argv) {
 	int width = 320;
 	int height = 240;
 	int photon_num = 10000;
-	double gather_photon_radius = 32.0;
-	int gahter_max_photon_num = 65536;
-	
+	double gather_hitpoint_radius = INF;
+	int gather_max_hitpoints = 32;
 	// PPMのパラメータ
 	const int iteration = 1000;
 	const int output_interval = 10;
@@ -620,7 +622,8 @@ int main(int argc, char **argv) {
 	Color *image = new Color[width * height];
 
 	// 一段階目のシーントレース処理
-	std::vector<Hitpoint> hitpoints;
+	HitpointMap hitpoints;
+
 	for (int y = 0; y < height; y ++) {
 		srand(y * y * y);
 		for (int x = 0; x < width; x ++) {
@@ -638,29 +641,33 @@ int main(int argc, char **argv) {
 								cy * (((sy + 0.5 + dy) / 2.0 + y) / height- 0.5) + camera.dir;
 
 					// プログレッシブフォトンマップの前処理
-					trace_scene(Ray(camera.org + dir * 130.0, Normalize(dir)), image_index, hitpoints, 1.0, 0);
+					trace_scene(Ray(camera.org + dir * 130.0, Normalize(dir)), image_index, &hitpoints, 1.0, 0);
 				}
 			}
 		}
 	}
+	
+	std::cout << "Creating KD-tree..." << std::endl;
+	hitpoints.CreateKDtree();
+	std::cout << "Done." << std::endl;
 
+	std::vector<Hitpoint*> hitpoint_vector;
+	hitpoints.CopyToVector(hitpoint_vector);
+	
 	// 以下、二段階目のプログレッシブ処理
-
 	for (int i = 0; i < iteration; i ++) {
 		std::cout << "----- Iteration " << (i + 1) << " -----" << std::endl;
-		PhotonMap photon_map;
-		create_photon_map(photon_num, &photon_map);
-
+		
 		for (int j = 0; j < width * height; j ++)
 			image[j] = Color();
 
-		// プログレッシブに画像更新
-		update_image(i, image, photon_map, hitpoints, Alpha, gahter_max_photon_num);
+		trace_photon(hitpoints, photon_num, Alpha, gather_hitpoint_radius, gather_max_hitpoints);
+		update_image(i, image, width, height, hitpoint_vector);
 	
 		// output_intervalごとに.hdrフォーマットで出力
 		if ((i + 1) % output_interval == 0) {
 			char fname[256];
-			sprintf(fname, "image_%04d.hdr", i + 1);
+			sprintf(fname, "image_%04d_.hdr", i + 1);
 			save_hdr_file(std::string(fname), image, width, height);
 		}
 	}
