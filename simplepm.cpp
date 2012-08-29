@@ -374,8 +374,38 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 	std::cout << "Done." << std::endl;
 }
 
+// 直接光を計算する
+Color direct_radiance(const Vec &v0, const Vec &normal, const int id, const Vec &light_pos) {
+	const Vec light_normal = Normalize(light_pos - spheres[LightID].position);
+	const Vec light_dir = Normalize(light_pos - v0);
+	const double dist2 = (light_pos - v0).LengthSquared();
+	const double dot0 = Dot(normal, light_dir);
+	const double dot1 = Dot(light_normal, -1.0 * light_dir);
+
+	if (dot0 >= 0 && dot1 >= 0) {
+		const double G = dot0 * dot1 / dist2;
+		double t; // レイからシーンの交差位置までの距離
+		int id_; // 交差したシーン内オブジェクトのID
+		intersect_scene(Ray(v0, light_dir), &t, &id_);
+		if (fabs(sqrt(dist2) - t) < 1e-3) {	
+			return Multiply(spheres[id].color, spheres[LightID].emission) * (1.0 / PI) * G / (1.0 / (4.0 * PI * pow(spheres[LightID].radius, 2.0)));
+		}
+	}
+	return Color();
+}
+
+// 光源上の点をサンプリングして直接光を計算する
+Color direct_radiance_sample(const Vec &v0, const Vec &normal, const int id) {
+	// 光源上の一点をサンプリングする
+	const double r1 = 2 * PI * rand01();
+	const double r2 = 1.0 - 2.0 * rand01();
+	const Vec light_pos = spheres[LightID].position + ((spheres[LightID].radius + EPS) * Vec(sqrt(1.0 - r2*r2) * cos(r1), sqrt(1.0 - r2*r2) * sin(r1), r2));
+
+	return direct_radiance(v0, normal, id, light_pos);
+}
+
 // ray方向からの放射輝度を求める
-Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const double gather_radius, const int gahter_max_photon_num) {
+Color radiance(const Ray &ray, const int depth, const int diffuse_depth, PhotonMap *photon_map, const double gather_radius, const int gahter_max_photon_num, const int final_gather, const int direct_light_samples) {
 	double t; // レイからシーンの交差位置までの距離
 	int id;   // 交差したシーン内オブジェクトのID
 	if (!intersect_scene(ray, &t, &id))
@@ -398,34 +428,68 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 
 	switch (obj.ref_type) {
 	case DIFFUSE: {
-		// フォトンマップをつかって放射輝度推定する
-		PhotonMap::ResultQueue pqueue;
-		// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
-		PhotonMap::Query query(hitpoint, orienting_normal, gather_radius, gahter_max_photon_num);
-		photon_map->SearchKNN(&pqueue, query);
-		Color accumulated_flux;
-		double max_distance2 = -1;
+		if (diffuse_depth == 0) { // 最初にヒットしたディフューズ面でファイナルギャザリングする
+			if (id == LightID) { // 最初にヒットしたのが光源だったらそのままエミッションの値採用
+				return obj.emission;
+			} else {
+				Color accum;
 
-		// キューからフォトンを取り出しvectorに格納する
-		std::vector<PhotonMap::ElementForQueue> photons;
-		photons.reserve(pqueue.size());
-		for (;!pqueue.empty();) {
-			PhotonMap::ElementForQueue p = pqueue.top(); pqueue.pop();
-			photons.push_back(p);
-			max_distance2 = std::max(max_distance2, p.distance2);
-		}
+				// ファイナルギャザリング
+				for (int i = 0; i < final_gather; i ++) {
+					// orienting_normalの方向を基準とした正規直交基底(w, u, v)を作る。この基底に対する半球内で次のレイを飛ばす。
+					Vec w, u, v;
+					w = orienting_normal;
+					if (fabs(w.x) > 0.1)
+						u = Normalize(Cross(Vec(0.0, 1.0, 0.0), w));
+					else
+						u = Normalize(Cross(Vec(1.0, 0.0, 0.0), w));
+					v = Cross(w, u);
+					// コサイン項を使った重点的サンプリング
+					const double r1 = 2 * PI * rand01();
+					const double r2 = rand01(), r2s = sqrt(r2);
+					Vec dir = Normalize((u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1.0 - r2)));
 
-		// 円錐フィルタを使用して放射輝度推定する
-		const double max_distance = sqrt(max_distance2);
-		const double k = 1.1;
-		for (int i = 0; i < photons.size(); i ++) {
-			const double w = 1.0 - (sqrt(photons[i].distance2) / (k * max_distance)); // 円錐フィルタの重み
-			const Color v = Multiply(obj.color, photons[i].point->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
-			accumulated_flux = accumulated_flux + w * v;
-		}
-		accumulated_flux = accumulated_flux / (1.0 - 2.0 / (3.0 * k)); // 円錐フィルタの係数
-		if (max_distance2 > 0.0) {
-			return obj.emission + accumulated_flux / (PI * max_distance2) / russian_roulette_probability;
+					accum = accum + Multiply(obj.color, radiance(Ray(hitpoint, dir), depth+1, diffuse_depth+1, photon_map,
+						gather_radius, gahter_max_photon_num, final_gather, direct_light_samples)) / russian_roulette_probability / final_gather;
+				}
+				
+				// 直接光のサンプリング
+				// ファイナルギャザリングで求まるのは（今回は）間接光のみなので直接光は別にサンプリングして求めてやる
+				for (int i = 0; i < direct_light_samples; i ++) {
+					accum = accum + direct_radiance_sample(hitpoint, orienting_normal, id) / russian_roulette_probability / direct_light_samples;
+				}
+
+				return accum;
+			}
+		} else { // 二回目以降にヒットしたディフューズ面ではフォトンマップをつかって放射輝度推定する
+			PhotonMap::ResultQueue pqueue;
+			// k近傍探索。gather_radius半径内のフォトンを最大gather_max_photon_num個集めてくる
+			PhotonMap::Query query(hitpoint, orienting_normal, gather_radius, gahter_max_photon_num);
+			photon_map->SearchKNN(&pqueue, query);
+			Color accumulated_flux;
+			double max_distance2 = -1;
+
+			// キューからフォトンを取り出しvectorに格納する
+			std::vector<PhotonMap::ElementForQueue> photons;
+			photons.reserve(pqueue.size());
+			for (;!pqueue.empty();) {
+				PhotonMap::ElementForQueue p = pqueue.top(); pqueue.pop();
+				photons.push_back(p);
+				max_distance2 = std::max(max_distance2, p.distance2);
+			}
+
+			// 円錐フィルタを使用して放射輝度推定する
+			const double max_distance = sqrt(max_distance2);
+			const double k = 1.1;
+			for (int i = 0; i < photons.size(); i ++) {
+				const double w = 1.0 - (sqrt(photons[i].distance2) / (k * max_distance)); // 円錐フィルタの重み
+				const Color v = Multiply(obj.color, photons[i].point->power) / PI; // Diffuse面のBRDF = 1.0 / πであったのでこれをかける
+				accumulated_flux = accumulated_flux + w * v;
+			}
+			accumulated_flux = accumulated_flux / (1.0 - 2.0 / (3.0 * k)); // 円錐フィルタの係数
+			if (max_distance2 > 0.0) {
+				return accumulated_flux / (PI * max_distance2) / russian_roulette_probability;
+			}
 		}
 	} break;
 
@@ -435,7 +499,8 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 
 	case SPECULAR: {
 		// 完全鏡面にヒットした場合、反射方向から放射輝度をもらってくる
-		return obj.emission + radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num);
+		return obj.emission + radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, diffuse_depth, photon_map,
+			gather_radius, gahter_max_photon_num, final_gather, direct_light_samples);
 	} break;
 	case REFRACTION: {
 		Ray reflection_ray = Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir));
@@ -451,7 +516,8 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 		if (cos2t < 0.0) { // 全反射した	
 			// 反射方向から放射輝度をもらってくる
 			return obj.emission + Multiply(obj.color,
-				radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, photon_map, gather_radius, gahter_max_photon_num)) / russian_roulette_probability;
+				radiance(Ray(hitpoint, ray.dir - normal * 2.0 * Dot(normal, ray.dir)), depth+1, diffuse_depth, photon_map,
+				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples)) / russian_roulette_probability;
 		}
 		// 屈折していく方向
 		Vec tdir = Normalize(ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
@@ -469,19 +535,23 @@ Color radiance(const Ray &ray, const int depth, PhotonMap *photon_map, const dou
 		if (depth > 2) {
 			if (rand01() < probability) { // 反射
 				return obj.emission +
-					Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re)
+					Multiply(obj.color, radiance(reflection_ray, depth+1, diffuse_depth, photon_map,
+					gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Re)
 					/ probability
 					/ russian_roulette_probability;
 			} else { // 屈折
 				return obj.emission +
-					Multiply(obj.color, radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr)
+					Multiply(obj.color, radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
+					gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Tr)
 					/ (1.0 - probability)
 					/ russian_roulette_probability;
 			}
 		} else { // 屈折と反射の両方を追跡
 			return obj.emission +
-				Multiply(obj.color, radiance(reflection_ray, depth+1, photon_map, gather_radius, gahter_max_photon_num) * Re
-				+ radiance(Ray(hitpoint, tdir), depth+1, photon_map, gather_radius, gahter_max_photon_num) * Tr) / russian_roulette_probability;
+				Multiply(obj.color, radiance(reflection_ray, depth+1, diffuse_depth, photon_map,
+				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Re
+				+ radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
+				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Tr) / russian_roulette_probability;
 		}
 	} break;
 	}
@@ -557,11 +627,14 @@ void save_hdr_file(const std::string &filename, const Color* image, const int wi
 }
 
 int main(int argc, char **argv) {
-	int width = 640;
-	int height = 480;
+	int width = 320;
+	int height = 240;
 	int photon_num = 50000;
 	double gather_photon_radius = 32.0;
 	int gahter_max_photon_num = 64;
+
+	int final_gather = 128; // ファイナルギャザリング時にとばすレイの数
+	int direct_light_samples = 128; // 直接光のサンプリング数
 
 	// カメラ位置
 	Ray camera(Vec(50.0, 52.0, 295.6), Normalize(Vec(0.0, -0.042612, -1.0)));
@@ -574,7 +647,7 @@ int main(int argc, char **argv) {
 	PhotonMap photon_map;
 	create_photon_map(photon_num, &photon_map);
 
-// #pragma omp parallel for schedule(dynamic, 1)
+//#pragma omp parallel for schedule(dynamic, 1)
 	for (int y = 0; y < height; y ++) {
 		std::cerr << "Rendering " << (100.0 * y / (height - 1)) << "%" << std::endl;
 		srand(y * y * y);
@@ -591,7 +664,8 @@ int main(int argc, char **argv) {
 					const double r2 = 2.0 * rand01(), dy = r2 < 1.0 ? sqrt(r2) - 1.0 : 1.0 - sqrt(2.0 - r2);
 					Vec dir = cx * (((sx + 0.5 + dx) / 2.0 + x) / width - 0.5) +
 								cy * (((sy + 0.5 + dy) / 2.0 + y) / height- 0.5) + camera.dir;
-					image[image_index] = image[image_index] + radiance(Ray(camera.org + dir * 130.0, Normalize(dir)), 0, &photon_map, gather_photon_radius, gahter_max_photon_num);
+					image[image_index] = image[image_index] + radiance(Ray(camera.org + dir * 130.0, Normalize(dir)), 0, 0, &photon_map, 
+						gather_photon_radius, gahter_max_photon_num, final_gather, direct_light_samples);
 				}
 			}
 		}
