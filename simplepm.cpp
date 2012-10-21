@@ -222,12 +222,12 @@ Sphere spheres[] = {
 	Sphere(5.0, Vec(50.0, 75.0, 81.6),Color(12,12,12), Color(), DIFFUSE),//照明
 	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Color(), Color(0.75, 0.25, 0.25),DIFFUSE),// 左
 	Sphere(1e5, Vec(-1e5+99,40.8,81.6),Color(), Color(0.25, 0.25, 0.75),DIFFUSE),// 右
-	Sphere(1e5, Vec(50,40.8, 1e5),     Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// 奥
+	Sphere(1e5, Vec(50,40.8, 1e5), Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// 奥
 	Sphere(1e5, Vec(50,40.8,-1e5+170), Color(), Color(), DIFFUSE),// 手前
-	Sphere(1e5, Vec(50, 1e5, 81.6),    Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// 床
+	Sphere(1e5, Vec(50, 1e5, 81.6), Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// 床
 	Sphere(1e5, Vec(50,-1e5+81.6,81.6),Color(), Color(0.75, 0.75, 0.75),DIFFUSE),// 天井
-	Sphere(16.5,Vec(27,16.5,47),       Color(), Color(1,1,1)*.99, SPECULAR),// 鏡
-	Sphere(16.5,Vec(73,16.5,78),       Color(), Color(1,1,1)*.99, REFRACTION),//ガラス
+	Sphere(16.5,Vec(27,16.5,47), Color(), Color(1,1,1)*.99, SPECULAR),// 鏡
+	Sphere(16.5,Vec(73,16.5,78), Color(), Color(1,1,1)*.99, REFRACTION),//ガラス
 };
 const int LightID = 0;
 
@@ -529,6 +529,16 @@ Color radiance(const Ray &ray, const int depth, const int diffuse_depth, PhotonM
 		const double Re = R0 + (1.0 - R0) * pow(c, 5.0);
 		const double Tr = 1.0 - Re; // 屈折光の運ぶ光の量
 		const double probability  = 0.25 + 0.5 * Re;
+		
+		// 屈折方向からの直接光
+		double lt;
+		int lid;
+		Ray refraction_ray = Ray(hitpoint, tdir);
+		intersect_scene(refraction_ray, &lt, &lid);
+		Vec direct_light_refraction;
+		if (lid == LightID)
+			direct_light_refraction = spheres[LightID].emission;
+
 
 		// 一定以上レイを追跡したら屈折と反射のどちらか一方を追跡する。（さもないと指数的にレイが増える）
 		// ロシアンルーレットで決定する。
@@ -541,7 +551,7 @@ Color radiance(const Ray &ray, const int depth, const int diffuse_depth, PhotonM
 					/ russian_roulette_probability;
 			} else { // 屈折
 				return obj.emission +
-					Multiply(obj.color, radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
+					Multiply(obj.color, direct_light_refraction + radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
 					gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Tr)
 					/ (1.0 - probability)
 					/ russian_roulette_probability;
@@ -550,8 +560,8 @@ Color radiance(const Ray &ray, const int depth, const int diffuse_depth, PhotonM
 			return obj.emission +
 				Multiply(obj.color, radiance(reflection_ray, depth+1, diffuse_depth, photon_map,
 				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Re
-				+ radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
-				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples) * Tr) / russian_roulette_probability;
+				+ (direct_light_refraction + radiance(Ray(hitpoint, tdir), depth+1, diffuse_depth, photon_map,
+				gather_radius, gahter_max_photon_num, final_gather, direct_light_samples)) * Tr) / russian_roulette_probability;
 		}
 	} break;
 	}
@@ -633,8 +643,8 @@ int main(int argc, char **argv) {
 	double gather_photon_radius = 32.0;
 	int gahter_max_photon_num = 64;
 
-	int final_gather = 128; // ファイナルギャザリング時にとばすレイの数
-	int direct_light_samples = 128; // 直接光のサンプリング数
+	int final_gather = 16; // ファイナルギャザリング時にとばすレイの数
+	int direct_light_samples = 16; // 直接光のサンプリング数
 
 	// カメラ位置
 	Ray camera(Vec(50.0, 52.0, 295.6), Normalize(Vec(0.0, -0.042612, -1.0)));
@@ -647,7 +657,7 @@ int main(int argc, char **argv) {
 	PhotonMap photon_map;
 	create_photon_map(photon_num, &photon_map);
 
-//#pragma omp parallel for schedule(dynamic, 1)
+//#pragma omp parallel for schedule(dynamic, 1) num_threads(10)
 	for (int y = 0; y < height; y ++) {
 		std::cerr << "Rendering " << (100.0 * y / (height - 1)) << "%" << std::endl;
 		srand(y * y * y);
