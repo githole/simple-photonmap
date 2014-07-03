@@ -469,20 +469,32 @@ void create_photon_map(const int shoot_photon_num, PhotonMap *photon_map) {
 					now_flux = Multiply(now_flux, obj.color);
 					continue;
 				}
+	
 				// 屈折していく方向
 				Vec tdir = Normalize(now_ray.dir * nnt - normal * (into ? 1.0 : -1.0) * (ddn * nnt + sqrt(cos2t)));
-				const double probability  = 0.5;
+
+				// SchlickによるFresnelの反射係数の近似
+				const double a = nt - nc, b = nt + nc;
+				const double R0 = (a * a) / (b * b);
+				const double c = 1.0 - (into ? -ddn : Dot(tdir, normal));
+				const double Re = R0 + (1.0 - R0) * pow(c, 5.0);
+				const double Tr = 1.0 - Re; // 屈折光の運ぶ光の量
+				const double probability  = Re;
 
 				// 屈折と反射のどちらか一方を追跡する。
 				// ロシアンルーレットで決定する。
 				if (rand01() < probability) { // 反射
-					now_ray = Ray(hitpoint, tdir);
-					now_flux = Multiply(now_flux, obj.color);
-					continue;
+				  now_ray = reflection_ray;
+				  // Fresnel係数Reを乗算し、ロシアンルーレット確率prob.で割る。
+				  // 今、prob.=Reなので Re / prob. = 1.0 となる。
+				  // よって、now_flux = Multiply(now_flux, obj.color) * Re / probability; が以下の式になる。
+				  // 屈折の場合も同様。
+				  now_flux = Multiply(now_flux, obj.color);
+				  continue;
 				} else { // 屈折
-					now_ray = reflection_ray;
-					now_flux = Multiply(now_flux, obj.color);
-					continue;
+				  now_ray = Ray(hitpoint, tdir);
+				  now_flux = Multiply(now_flux, obj.color);
+				  continue;
 				}
 			} break;
 			}
